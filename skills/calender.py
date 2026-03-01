@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
 from typing import Any, Literal
-from zoneinfo import ZoneInfo
 
 from google.auth.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -24,7 +23,7 @@ from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 try:
     from dotenv import load_dotenv
@@ -89,9 +88,9 @@ class Attendee(BaseModel):
 
 
 class EventCreateInput(BaseModel):
-    summary: str = Field(description="Event title")
-    start_time: str = Field(description="Start datetime or date in ISO 8601")
-    end_time: str = Field(description="End datetime or date in ISO 8601")
+    summary: str = Field(min_length=1, description="Event title")
+    start_time: str = Field(min_length=1, description="Start datetime or date in ISO 8601")
+    end_time: str = Field(min_length=1, description="End datetime or date in ISO 8601")
     timezone: str | None = Field(default=None)
     description: str | None = None
     location: str | None = None
@@ -101,16 +100,23 @@ class EventCreateInput(BaseModel):
 
 
 class EventUpdateInput(BaseModel):
-    event_id: str = Field(description="Google Calendar event ID")
-    summary: str | None = None
+    event_id: str = Field(min_length=1, description="Google Calendar event ID")
+    summary: str | None = Field(default=None, min_length=1)
     description: str | None = None
     location: str | None = None
-    start_time: str | None = None
-    end_time: str | None = None
+    start_time: str | None = Field(default=None, min_length=1)
+    end_time: str | None = Field(default=None, min_length=1)
     timezone: str | None = None
     attendees: list[Attendee] | None = None
     conference_meeting: bool | None = None
     send_updates: Literal["all", "externalOnly", "none"] | None = None
+
+    @model_validator(mode='after')
+    def validate_time_fields(self) -> 'EventUpdateInput':
+        """Ensure that if start_time or end_time is provided, both must be provided."""
+        if (self.start_time is None) != (self.end_time is None):
+            raise ValueError("Both start_time and end_time must be provided together")
+        return self
 
 
 class EventFilters(BaseModel):
@@ -175,30 +181,14 @@ class GoogleCalendarClient:
             )
         return self._service_cache
 
-    def _call_google(self, operation: str, request: Any, params: dict[str, Any]) -> Any:
-        print(
-            f"[google-call] op={operation} params={json.dumps(params, default=str)}",
-            file=sys.stderr,
-            flush=True,
-        )
-        try:
-            return request.execute()
-        except HttpError as exc:
-            status = getattr(exc.resp, "status", "unknown")
-            content = exc.content.decode("utf-8", errors="replace") if getattr(exc, "content", None) else str(exc)
+    def _call_google(self, operation: str, request: Any, params: dict[str, Any] | None = None) -> Any:
+        if params:
             print(
-                f"[google-call-failed] op={operation} status={status} reason={content}",
+                f"[google-call] op={operation} params={json.dumps(params, default=str)}",
                 file=sys.stderr,
                 flush=True,
             )
-            raise
-        except Exception as exc:
-            print(
-                f"[google-call-failed] op={operation} reason={exc}",
-                file=sys.stderr,
-                flush=True,
-            )
-            raise
+        return request.execute()
 
     def list_events(self, filters: EventFilters) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
@@ -229,14 +219,10 @@ class GoogleCalendarClient:
         return _simplify_event(event)
 
     def update_event(self, payload: EventUpdateInput) -> dict[str, Any]:
-        get_params: dict[str, Any] = {
-            "calendarId": self.calendar_id,
-            "eventId": payload.event_id,
-        }
         get_request = self._service().events().get(
             calendarId=self.calendar_id, eventId=payload.event_id
         )
-        event_resource = self._call_google("events.get", get_request, get_params)
+        event_resource = self._call_google("events.get", get_request)
         if payload.summary is not None:
             event_resource["summary"] = payload.summary
         if payload.description is not None:
@@ -265,16 +251,14 @@ class GoogleCalendarClient:
         return _simplify_event(event)
 
     def delete_event(self, event_id: str, send_updates: Literal["all", "externalOnly", "none"] | None = None) -> None:
-        params: dict[str, Any] = {"calendarId": self.calendar_id, "eventId": event_id}
+        params = {"calendarId": self.calendar_id, "eventId": event_id}
         if send_updates:
             params["sendUpdates"] = send_updates
-        request = self._service().events().delete(**params)
-        self._call_google("events.delete", request, params)
+        self._call_google("events.delete", self._service().events().delete(**params))
 
     def get_event(self, event_id: str) -> dict[str, Any]:
-        params: dict[str, Any] = {"calendarId": self.calendar_id, "eventId": event_id}
-        request = self._service().events().get(calendarId=self.calendar_id, eventId=event_id)
-        event = self._call_google("events.get", request, params)
+        params = {"calendarId": self.calendar_id, "eventId": event_id}
+        event = self._call_google("events.get", self._service().events().get(**params))
         return _simplify_event(event)
 
     def _build_event_body(self, payload: EventCreateInput) -> dict[str, Any]:
@@ -339,8 +323,22 @@ def _handle_google_errors(func):
 
 @mcp.tool()
 @_handle_google_errors
-async def list_events(filters: EventFilters, ctx: Context[ServerSession, None]) -> list[dict[str, Any]]:
-    """List upcoming calendar events with optional time range and search filters."""
+async def list_events(
+    ctx: Context[ServerSession, None],
+    query: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    max_results: int = 10
+) -> list[dict[str, Any]]:
+    """List upcoming calendar events with optional time range and search filters.
+    
+    Args:
+        query: Search query to filter events by summary/description
+        time_min: Minimum time bound (ISO 8601 format)
+        time_max: Maximum time bound (ISO 8601 format)
+        max_results: Maximum number of events to return (default 10)
+    """
+    filters = EventFilters(query=query, time_min=time_min, time_max=time_max, max_results=max_results)
     client = get_client()
     events = await asyncio.to_thread(client.list_events, filters)
     await ctx.info(f"Fetched {len(events)} events from {client.calendar_id}.")
@@ -349,8 +347,33 @@ async def list_events(filters: EventFilters, ctx: Context[ServerSession, None]) 
 
 @mcp.tool()
 @_handle_google_errors
-async def create_event(payload: EventCreateInput, ctx: Context[ServerSession, None]) -> dict[str, Any]:
-    """Create a new calendar event with the given summary, time, and optional details like location and attendees."""
+async def create_event(
+    ctx: Context[ServerSession, None],
+    summary: str,
+    start_time: str,
+    end_time: str,
+    description: str | None = None,
+    location: str | None = None,
+    timezone: str | None = None
+) -> dict[str, Any]:
+    """Create a new calendar event with the given summary, time, and optional details.
+    
+    Args:
+        summary: Event title/summary
+        start_time: Start datetime in ISO 8601 format (e.g., '2026-05-06T14:00:00')
+        end_time: End datetime in ISO 8601 format
+        description: Optional event description
+        location: Optional event location
+        timezone: Optional timezone (e.g., 'Asia/Hong_Kong')
+    """
+    payload = EventCreateInput(
+        summary=summary,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        location=location,
+        timezone=timezone
+    )
     client = get_client()
     event = await asyncio.to_thread(client.create_event, payload)
     await ctx.info(f"Created event {event.get('id')}")
@@ -359,18 +382,48 @@ async def create_event(payload: EventCreateInput, ctx: Context[ServerSession, No
 
 @mcp.tool()
 @_handle_google_errors
-async def update_event(payload: EventUpdateInput, ctx: Context[ServerSession, None]) -> dict[str, Any]:
-    """Update an existing calendar event by ID, optionally changing summary, time, location, attendees, or conference settings."""
+async def update_event(
+    ctx: Context[ServerSession, None],
+    event_id: str,
+    summary: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    description: str | None = None,
+    location: str | None = None,
+    timezone: str | None = None
+) -> dict[str, Any]:
+    """Update an existing calendar event by ID.
+    
+    Args:
+        event_id: Google Calendar event ID (obtain via list_events)
+        summary: New event title (optional)
+        start_time: New start datetime in ISO 8601 format (optional, must provide with end_time)
+        end_time: New end datetime in ISO 8601 format (optional, must provide with start_time)
+        description: New event description (optional)
+        location: New event location (optional)
+        timezone: Timezone for the times (optional)
+    """
+    payload = EventUpdateInput(
+        event_id=event_id,
+        summary=summary,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+        location=location,
+        timezone=timezone
+    )
     client = get_client()
     event = await asyncio.to_thread(client.update_event, payload)
-    await ctx.info(f"Updated event {payload.event_id}")
+    await ctx.info(f"Updated event {event_id}")
     return event
 
 
 @mcp.tool()
 @_handle_google_errors
 async def delete_event(event_id: str, ctx: Context[ServerSession, None], send_updates: Literal["all", "externalOnly", "none"] | None = None,) -> dict[str, Any]:
-    """Delete a calendar event by ID. Optionally notify attendees of the cancellation."""
+    """Delete a calendar event by ID. Optionally notify attendees of the cancellation.
+    
+    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events."""
     client = get_client()
     await asyncio.to_thread(client.delete_event, event_id, send_updates)
     await ctx.info(f"Deleted event {event_id}")
@@ -380,7 +433,9 @@ async def delete_event(event_id: str, ctx: Context[ServerSession, None], send_up
 @mcp.tool()
 @_handle_google_errors
 async def get_event(event_id: str, ctx: Context[ServerSession, None]) -> dict[str, Any]:
-    """Fetch full details of a specific calendar event by ID."""
+    """Fetch full details of a specific calendar event by ID.
+    
+    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events."""
     client = get_client()
     event = await asyncio.to_thread(client.get_event, event_id)
     await ctx.info(f"Retrieved event {event_id}")

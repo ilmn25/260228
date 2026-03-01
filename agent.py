@@ -36,30 +36,31 @@ except Exception:
     pass
 
 SYSTEM_PROMPT = """
-You are an autonomous planner that can call Google Calendar tools via MCP.
+You are an autonomous planner that can call a set of planning tools via MCP.
 You MUST respond with ONLY a single JSON object. No explanation, no markdown, no extra text.
 
-The JSON must follow EXACTLY one of these two shapes:
+The JSON must follow EXACTLY one of these three shapes:
 
-To call a tool:
+To call a tool for information or an operation:
 {"action":"tool","tool":"<tool-name>","arguments":{...}}
+
+To ask the user for missing information:
+{"action":"ask","question":"<question-for-user>"}
 
 To finish:
 {"action":"final","message":"<human-readable summary>"}
 
 Rules:
-- "action" must be EXACTLY "tool" or "final". Never use a tool name as the action value.
-- "tool" must be one of the available tool names listed below.
-- "arguments" must match the fields listed for that tool.
-- Do NOT use "payload", "params", or any other key instead of "arguments".
+- "action" must be EXACTLY "tool", "ask", or "final"
+- execute the target operation once you have sufficient information.
+- finish with a clear summary of what was accomplished.
 
-Example tool call (ALWAYS include timezone for create_event and update_event):
-{"action":"tool","tool":"create_event","arguments":{"summary":"Team sync","start_time":"2026-03-02T10:00:00","end_time":"2026-03-02T10:30:00","timezone":"Asia/Hong_Kong"}}
+[Calendar Tool]
+For update_event, delete_event, get_event:
+1. Use list_events first to get a list of all events and then search for the existing event's id and information
+2. For update_event: omitted fields (start_time, end_time, location, description, attendees) uses existing event's information
 
-If the user does not specify a timezone, default to "Asia/Hong_Kong".
-
-Example finish:
-{"action":"final","message":"Done. Created the event successfully."}
+Available tools:
 """.strip()
 
 
@@ -96,7 +97,7 @@ def describe_tools(tools: Iterable[types.Tool]) -> str:
     for tool in tools:
         sig = tool.name
         if tool.inputSchema:
-            sig += f"(fields: {list(tool.inputSchema.get('properties', {}).keys())})"
+            sig += f"(arguments: {list(tool.inputSchema.get('properties', {}).keys())})"
         desc = tool.description or "no description"
         lines.append(f"- {sig}: {desc}")
     return "\n".join(lines)
@@ -113,50 +114,15 @@ def parse_agent_command(raw: str, tool_names: set[str] | None = None) -> dict[st
     # Normalize off-schema responses like:
     # {"action":"create_event","payload":{...}}
     action = cmd.get("action")
-    if action not in ("tool", "final") and tool_names and action in tool_names:
-        args = cmd.get("arguments") or cmd.get("payload") or cmd.get("params") or {}
+    if action not in ("tool", "final", "ask") and tool_names and action in tool_names:
+        args = cmd.get("arguments") or cmd.get("payload") or cmd.get("params") or cmd.get("fields") or {}
         cmd = {"action": "tool", "tool": action, "arguments": args}
+    
+    # Also normalize if action is 'tool' but using wrong parameter name
+    if action == "tool" and "arguments" not in cmd:
+        cmd["arguments"] = cmd.get("fields") or cmd.get("payload") or cmd.get("params") or {}
 
     return cmd
-
-
-def _default_timezone() -> str:
-    return (
-        os.environ.get("GOOGLE_CALENDAR_TIMEZONE")
-        or os.environ.get("DEFAULT_TIMEZONE")
-        or "Asia/Hong_Kong"
-    )
-
-
-def _normalize_event_arguments(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    if tool_name not in {"create_event", "update_event"}:
-        return arguments
-
-    normalized = dict(arguments)
-
-    # Accept alternative model shapes:
-    # - payload: {start: {dateTime, timeZone}, end: {dateTime, timeZone}}
-    # - payload: {start_time, end_time, timezone}
-    start_obj = normalized.get("start")
-    end_obj = normalized.get("end")
-
-    if isinstance(start_obj, dict) and "start_time" not in normalized:
-        if isinstance(start_obj.get("dateTime"), str):
-            normalized["start_time"] = start_obj["dateTime"]
-        if isinstance(start_obj.get("timeZone"), str) and not normalized.get("timezone"):
-            normalized["timezone"] = start_obj["timeZone"]
-
-    if isinstance(end_obj, dict) and "end_time" not in normalized:
-        if isinstance(end_obj.get("dateTime"), str):
-            normalized["end_time"] = end_obj["dateTime"]
-        if isinstance(end_obj.get("timeZone"), str) and not normalized.get("timezone"):
-            normalized["timezone"] = end_obj["timeZone"]
-
-    # Ensure timezone fallback for event operations.
-    if not normalized.get("timezone"):
-        normalized["timezone"] = _default_timezone()
-
-    return normalized
 
 
 def serialize_tool_result(result: types.CallToolResult) -> dict[str, Any]:
@@ -185,7 +151,7 @@ async def run_agent(args: argparse.Namespace) -> None:
             tool_descriptions = describe_tools(tools_response.tools)
             tool_names = {tool.name for tool in tools_response.tools}
 
-            system_block = {"role": "system", "content": f"{SYSTEM_PROMPT}\nAvailable tools:\n{tool_descriptions}"}
+            system_block = {"role": "system", "content": f"{SYSTEM_PROMPT}\n{tool_descriptions}"}
 
             # Persistent REPL mode (always): spawn server once and accept many prompts.
             print("Starting persistent agent. Type prompts, `/reset` to clear conversation, `/exit` to quit.")
@@ -206,28 +172,40 @@ async def run_agent(args: argparse.Namespace) -> None:
                 conversation.append({"role": "user", "content": prompt_text})
 
                 while True:
-                    model_reply = gh_client.complete(conversation)
-                    command = parse_agent_command(model_reply, tool_names)
+                    print("a")
+                    model_reply = gh_client.complete(conversation) 
+                    command = parse_agent_command(model_reply, tool_names) 
+                    
+                    tool_name = command.get("tool")
 
                     if command.get("action") == "final":
                         print(command.get("message", "Done."))
                         conversation.append({"role": "assistant", "content": model_reply})
                         break
 
+                    if command.get("action") == "ask":
+                        question = command.get("question", "Please provide more information:")
+                        print(f"agent: {question}")
+                        user_answer = await asyncio.to_thread(input, "you> ")
+                        conversation.extend([
+                            {"role": "assistant", "content": model_reply},
+                            {"role": "user", "content": user_answer}
+                        ])
+                        continue
+
                     if command.get("action") != "tool":
                         raise RuntimeError(f"Unknown action from model: {command}")
 
-                    tool_name = command.get("tool")
                     if tool_name not in tool_names:
                         raise RuntimeError(f"Model requested unknown tool: {tool_name}")
 
+                    print(f"Model command: {command.get('action')}")
                     arguments = command.get("arguments") or {}
                     if not isinstance(arguments, dict):
                         arguments = {}
-                    arguments = _normalize_event_arguments(tool_name, arguments)
+                    
                     tool_result: types.CallToolResult = await session.call_tool(tool_name, arguments)
                     result_payload = serialize_tool_result(tool_result)
-
                     conversation.extend(
                         [
                             {"role": "assistant", "content": model_reply},
@@ -255,7 +233,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--server-args",
         nargs=argparse.REMAINDER,
-        default=["calender.py"],
+        default=["skills/calender.py"],
         help="Arguments passed to the MCP server command",
     )
     parser.add_argument(
