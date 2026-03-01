@@ -58,10 +58,10 @@ Rules:
 For update_event, delete_event, get_event:
 1. Use list_events first to get a list of all events and then search for the existing event's id and information
 2. For update_event: omitted fields (start_time, end_time, location, description, attendees) uses existing event's information
+3. For multiple events to be created, updated, or deleted, call the tool separately for each event, do not batch into a single call.
 
 Available tools:
 """.strip()
-
 
 @dataclass
 class AzureModelsClient:
@@ -243,7 +243,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--server-args",
         nargs=argparse.REMAINDER,
-        default=["skills/calender.py"],
+        default=["skills/combined.py"],
         help="Arguments passed to the MCP server command",
     )
     parser.add_argument(
