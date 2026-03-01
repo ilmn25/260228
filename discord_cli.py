@@ -6,7 +6,7 @@ import json
 import os
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import discord
 from discord.ext import commands
@@ -45,6 +45,7 @@ class MCPAgentBridge:
     system_block: dict[str, str] = field(init=False)
     conversation: list[dict[str, str]] = field(init=False)
     _busy: bool = field(init=False, default=False)
+    _stop_requested: bool = field(init=False, default=False)
     pending_messages: list[str] = field(init=False, default_factory=list)
 
     def __post_init__(self) -> None:
@@ -81,16 +82,22 @@ class MCPAgentBridge:
 
     def release(self) -> None:
         self._busy = False
+    
+    def request_stop(self) -> None:
+        self._stop_requested = True
 
-    async def run_prompt(self, prompt_text: str) -> str:
+    async def run_prompt(self, prompt_text: str, on_tool_call: Callable[[str], Awaitable[None]] | None = None) -> str:
         if not self.session:
             raise RuntimeError("MCP session is not initialized.")
 
         self.pending_messages = []
+        self._stop_requested = False
         self.conversation.append({"role": "user", "content": prompt_text})
         self.gh_client.reset_call_count()
 
         while True:
+            if self._stop_requested:
+                return "Operation stopped."
             model_reply = self.gh_client.complete(self.conversation)
             command = parse_agent_command(model_reply, self.tool_names)
             action = command.get("action")
@@ -111,7 +118,10 @@ class MCPAgentBridge:
                 raise RuntimeError(f"Model requested unknown tool: {tool_name}")
 
             tool_msg = f"Model calling tool: {tool_name}()"
-            self.pending_messages.append(tool_msg)
+            if on_tool_call:
+                await on_tool_call(tool_msg)
+            else:
+                self.pending_messages.append(tool_msg)
             arguments = command.get("arguments") or {}
             if not isinstance(arguments, dict):
                 arguments = {}
@@ -224,13 +234,21 @@ async def main() -> None:
             bridge.reset_conversation()
             await message.reply("Conversation reset.", mention_author=False)
             return
+        
+        if content == "/stop":
+            bridge.request_stop()
+            await message.reply("Stop requested.", mention_author=False)
+            return
 
         if not bridge.try_acquire():
             await message.reply("Bot is busy, please wait for the current operation to complete.", mention_author=False)
             return
 
+        async def send_tool_message(msg: str) -> None:
+            await message.channel.send(msg)
+
         try:
-            response = await bridge.run_prompt(content)
+            response = await bridge.run_prompt(content, on_tool_call=send_tool_message)
         except Exception as exc:
             error_msg = f"Error: {exc}"
             bridge.pending_messages.append(error_msg)
@@ -238,7 +256,7 @@ async def main() -> None:
         finally:
             bridge.release()
 
-        # Send pending messages first (tool calls, errors, etc.)
+        # Send pending messages (errors, etc.)
         for pending_msg in bridge.pending_messages:
             await message.channel.send(pending_msg)
 
