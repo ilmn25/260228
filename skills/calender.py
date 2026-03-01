@@ -152,6 +152,11 @@ class Attendee(BaseModel):
     optional: bool = Field(False, description="Mark attendee as optional")
 
 
+class Reminder(BaseModel):
+    method: Literal["email", "popup"] = Field(description="Notification method")
+    minutes: int = Field(ge=0, le=40320, description="Minutes before event to send reminder (max 4 weeks)")
+
+
 class EventCreateInput(BaseModel):
     summary: str = Field(min_length=1, description="Event title")
     start_time: str = Field(min_length=1, description="Start datetime or date in ISO 8601")
@@ -163,6 +168,7 @@ class EventCreateInput(BaseModel):
     conference_meeting: bool = Field(default=False)
     all_day: bool = Field(default=False)
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None
+    reminders: list[Reminder] | None = Field(default=None, description="Custom reminders for the event")
     send_updates: Literal["all", "externalOnly", "none"] | None = None
 
 
@@ -178,6 +184,7 @@ class EventUpdateInput(BaseModel):
     conference_meeting: bool | None = None
     all_day: bool | None = None
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None
+    reminders: list[Reminder] | None = Field(default=None, description="Custom reminders for the event")
     send_updates: Literal["all", "externalOnly", "none"] | None = None
 
     @model_validator(mode='after')
@@ -212,6 +219,7 @@ def _simplify_event(event: dict[str, Any]) -> dict[str, Any]:
         "updated": event.get("updated"),
         "attendees": event.get("attendees", []),
         "recurrence": event.get("recurrence", []),
+        "reminders": event.get("reminders"),
     }
 
 
@@ -329,6 +337,8 @@ class GoogleCalendarClient:
             event_resource["end"] = end
         if payload.attendees is not None:
             event_resource["attendees"] = [attendee.model_dump() for attendee in payload.attendees]
+        if payload.reminders is not None:
+            event_resource["reminders"] = self._build_reminders(payload.reminders)
         if payload.recurrence is not None:
             recurrence = _normalize_recurrence(payload.recurrence)
             if recurrence:
@@ -383,6 +393,8 @@ class GoogleCalendarClient:
             recurrence = _normalize_recurrence(payload.recurrence)
             if recurrence:
                 body["recurrence"] = recurrence
+        if payload.reminders:
+            body["reminders"] = self._build_reminders(payload.reminders)
         if payload.conference_meeting:
             body["conferenceData"] = self._build_conference_data(True)
         return body
@@ -391,6 +403,15 @@ class GoogleCalendarClient:
         if not enabled:
             return None
         return {"createRequest": {"conferenceSolutionKey": {"type": "hangoutsMeet"}, "requestId": os.urandom(8).hex()}}
+
+    def _build_reminders(self, reminders: list[Reminder]) -> dict[str, Any]:
+        """Build reminders object for Google Calendar API."""
+        if not reminders:
+            return {"useDefault": True}
+        return {
+            "useDefault": False,
+            "overrides": [reminder.model_dump() for reminder in reminders]
+        }
 
 
 @lru_cache(maxsize=1)
@@ -467,6 +488,7 @@ async def create_event(
     timezone: str | None = None,
     all_day: bool = False,
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
+    reminders: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Create a new calendar event with the given summary, time, and optional details.
     
@@ -480,7 +502,13 @@ async def create_event(
         all_day: Set true to create an all-day event (uses date boundaries)
         recurrence: Optional recurrence keyword(s): 'daily', 'weekly', 'monthly', or 'yearly'.
             You may pass a single value or a list of values.
+        reminders: Optional list of reminders. Each reminder should have 'method' ('email' or 'popup') 
+            and 'minutes' (0-40320, minutes before event). Example: [{"method": "popup", "minutes": 30}]
     """
+    parsed_reminders = None
+    if reminders:
+        parsed_reminders = [Reminder(**r) for r in reminders]
+    
     payload = EventCreateInput(
         summary=summary,
         start_time=start_time,
@@ -490,6 +518,7 @@ async def create_event(
         timezone=timezone,
         all_day=all_day,
         recurrence=recurrence,
+        reminders=parsed_reminders,
     )
     client = get_client()
     event = await asyncio.to_thread(client.create_event, payload)
@@ -510,6 +539,7 @@ async def update_event(
     timezone: str | None = None,
     all_day: bool | None = None,
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
+    reminders: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Update an existing calendar event by ID.
     
@@ -524,7 +554,13 @@ async def update_event(
         all_day: Set true/false to switch all-day mode (can be used without start/end)
         recurrence: Optional recurrence keyword(s): 'daily', 'weekly', 'monthly', or 'yearly'.
             You may pass a single value or a list of values. Pass [] to clear recurrence.
+        reminders: Optional list of reminders. Each reminder should have 'method' ('email' or 'popup') 
+            and 'minutes' (0-40320, minutes before event). Example: [{"method": "popup", "minutes": 30}]
     """
+    parsed_reminders = None
+    if reminders is not None:
+        parsed_reminders = [Reminder(**r) for r in reminders] if reminders else []
+    
     payload = EventUpdateInput(
         event_id=event_id,
         summary=summary,
@@ -535,6 +571,7 @@ async def update_event(
         timezone=timezone,
         all_day=all_day,
         recurrence=recurrence,
+        reminders=parsed_reminders,
     )
     client = get_client()
     event = await asyncio.to_thread(client.update_event, payload)

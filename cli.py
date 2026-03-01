@@ -59,6 +59,8 @@ For update_event, delete_event, get_event:
 1. Use list_events first to get a list of all events and then search for the existing event's id and information
 2. For update_event: omitted fields (start_time, end_time, location, description, attendees) uses existing event's information
 3. For multiple events to be created, updated, or deleted, call the tool separately for each event, do not batch into a single call.
+4. If no time is specified when making events, decide whether to set as whole-day (birthdays, etc.) or ask for a concrete time.
+5. pick a suitable notification time depending on the event type (e.g. 1 day before for assignments and meetings, etc.)
 
 Available tools:
 """.strip()
