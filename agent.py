@@ -1,10 +1,8 @@
-"""Minimal MCP-aware agent that uses GitHub Models (OpenAI family) for reasoning.
-
+"""Minimal MCP-aware agent that uses an Azure AI inference endpoint for reasoning.
 Usage
 -----
-1. Install deps: pip install "mcp[cli]" requests
-2. Export a GitHub token with access to Models API (free tier works). The token
-   must have `models:read` permission and will be sent to a Microsoft service:
+1. Install deps: pip install "mcp[cli]" requests azure-ai-inference azure-core
+2. Export a GitHub token with access to the inference deployment:
     setx GITHUB_TOKEN <your-token>
 3. Ensure the MCP server (calender.py) can be launched via `python calender.py`.
 4. Start the persistent agent REPL:
@@ -21,7 +19,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-import requests
+from azure.ai.inference import ChatCompletionsClient
+from azure.core.credentials import AzureKeyCredential
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
@@ -65,31 +64,37 @@ Available tools:
 
 
 @dataclass
-class GitHubModelsClient:
+class AzureModelsClient:
     token: str
-    model: str = "openai/gpt-4o"
-    endpoint: str = "https://models.github.ai/inference/chat/completions"
+    model: str = "gpt-4o-mini"
+    endpoint: str = "https://models.inference.ai.azure.com"
+    max_calls_per_prompt: int = 10  # Safety limit to prevent endpoint spam
+
+    def __post_init__(self):
+        # create the Azure ChatCompletionsClient once
+        self.client = ChatCompletionsClient(
+            endpoint=self.endpoint,
+            credential=AzureKeyCredential(self.token),
+        )
+        self.call_count = 0
 
     def complete(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-Client-Name": "mcp-gcal-agent",
-            "X-Client-Version": "1.0",
-        }
-        payload = {
-            "model": self.model,
-            "temperature": temperature,
-            "messages": messages,
-        }
-        response = requests.post(self.endpoint, headers=headers, json=payload, timeout=90)
-        response.raise_for_status()
-        data = response.json()
-        try:
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError) as exc:  # pragma: no cover (API contract)
-            raise RuntimeError(f"Unexpected model response: {data}") from exc
+        self.call_count += 1
+        if self.call_count > self.max_calls_per_prompt:
+            raise RuntimeError(
+                f"Azure API call limit exceeded ({self.max_calls_per_prompt} calls per prompt). "
+                "This likely indicates a loop bug. Please review your request."
+            )
+        response = self.client.complete(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+        )
+        return response.choices[0].message["content"].strip()
+    
+    def reset_call_count(self) -> None:
+        """Reset the call counter for a new prompt."""
+        self.call_count = 0
 
 
 def describe_tools(tools: Iterable[types.Tool]) -> str:
@@ -138,9 +143,9 @@ def serialize_tool_result(result: types.CallToolResult) -> dict[str, Any]:
 async def run_agent(args: argparse.Namespace) -> None:
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise RuntimeError("GITHUB_TOKEN environment variable is required for GitHub Models API.")
+        raise RuntimeError("GITHUB_TOKEN environment variable is required for the Azure inference API.")
 
-    gh_client = GitHubModelsClient(token=token, model=args.model)
+    gh_client = AzureModelsClient(token=token, model=args.model)
     server_params = StdioServerParameters(command=args.server_command, args=args.server_args)
 
     async with stdio_client(server_params) as (read, write):
@@ -171,59 +176,64 @@ async def run_agent(args: argparse.Namespace) -> None:
 
                 conversation.append({"role": "user", "content": prompt_text})
 
-                while True:
-                    print("a")
-                    model_reply = gh_client.complete(conversation) 
-                    command = parse_agent_command(model_reply, tool_names) 
-                    
-                    tool_name = command.get("tool")
+                try:
+                    gh_client.reset_call_count()  # Reset counter for new prompt
+                    while True:
+                        model_reply = gh_client.complete(conversation) 
+                        command = parse_agent_command(model_reply, tool_names) 
+                        
+                        tool_name = command.get("tool")
 
-                    if command.get("action") == "final":
-                        print(command.get("message", "Done."))
-                        conversation.append({"role": "assistant", "content": model_reply})
-                        break
+                        if command.get("action") == "final":
+                            print(command.get("message", "Done."))
+                            conversation.append({"role": "assistant", "content": model_reply})
+                            print("=====================================\n")
+                            break
 
-                    if command.get("action") == "ask":
-                        question = command.get("question", "Please provide more information:")
-                        print(f"agent: {question}")
-                        user_answer = await asyncio.to_thread(input, "you> ")
-                        conversation.extend([
-                            {"role": "assistant", "content": model_reply},
-                            {"role": "user", "content": user_answer}
-                        ])
-                        continue
+                        if command.get("action") == "ask":
+                            question = command.get("question", "Please provide more information:")
+                            print(f"agent: {question}")
+                            user_answer = await asyncio.to_thread(input, "you> ")
+                            conversation.extend([
+                                {"role": "assistant", "content": model_reply},
+                                {"role": "user", "content": user_answer}
+                            ])
+                            continue
 
-                    if command.get("action") != "tool":
-                        raise RuntimeError(f"Unknown action from model: {command}")
+                        if command.get("action") != "tool":
+                            raise RuntimeError(f"Unknown action from model: {command}")
 
-                    if tool_name not in tool_names:
-                        raise RuntimeError(f"Model requested unknown tool: {tool_name}")
+                        if tool_name not in tool_names:
+                            raise RuntimeError(f"Model requested unknown tool: {tool_name}")
 
-                    print(f"Model command: {command.get('action')}")
-                    arguments = command.get("arguments") or {}
-                    if not isinstance(arguments, dict):
-                        arguments = {}
-                    
-                    tool_result: types.CallToolResult = await session.call_tool(tool_name, arguments)
-                    result_payload = serialize_tool_result(tool_result)
-                    conversation.extend(
-                        [
-                            {"role": "assistant", "content": model_reply},
-                            {
-                                "role": "user",
-                                "content": json.dumps(
-                                    {
-                                        "tool": tool_name,
-                                        "result": result_payload,
-                                    }
-                                ),
-                            },
-                        ]
-                    )
+                        print(f"Model calling tool: {command.get('tool')}()")
+                        arguments = command.get("arguments") or {}
+                        if not isinstance(arguments, dict):
+                            arguments = {}
+                        
+                        tool_result: types.CallToolResult = await session.call_tool(tool_name, arguments)
+                        result_payload = serialize_tool_result(tool_result)
+                        conversation.extend(
+                            [
+                                {"role": "assistant", "content": model_reply},
+                                {
+                                    "role": "user",
+                                    "content": json.dumps(
+                                        {
+                                            "tool": tool_name,
+                                            "result": result_payload,
+                                        }
+                                    ),
+                                },
+                            ]
+                        )
+                except Exception as e:
+                    print(f"Error: {e}")
+                    print("Agent finalizing due to error.")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Custom MCP agent powered by GitHub Models")
+    parser = argparse.ArgumentParser(description="Custom MCP agent powered by Azure inference service")
     # persistent-only agent: no positional prompt, interact via REPL
     parser.add_argument(
         "--server-command",
