@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -15,11 +16,11 @@ from mcp.client.stdio import stdio_client
 
 from cli import (
     AzureModelsClient,
-    SYSTEM_PROMPT,
     describe_tools,
     parse_agent_command,
     serialize_tool_result,
 )
+from prompts import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
 
 # Optional .env support for local development.
 try:
@@ -46,6 +47,8 @@ class MCPAgentBridge:
     conversation: list[dict[str, str]] = field(init=False)
     _busy: bool = field(init=False, default=False)
     _stop_requested: bool = field(init=False, default=False)
+    _active_user_id: int | None = field(init=False, default=None)
+    _active_channel_id: int | None = field(init=False, default=None)
     pending_messages: list[str] = field(init=False, default_factory=list)
 
     def __post_init__(self) -> None:
@@ -65,7 +68,10 @@ class MCPAgentBridge:
         tools_response = await self.session.list_tools()
         self.tool_names = {tool.name for tool in tools_response.tools}
         tool_descriptions = describe_tools(tools_response.tools)
-        self.system_block = {"role": "system", "content": f"{SYSTEM_PROMPT}\n{tool_descriptions}"}
+        self.system_block = {
+            "role": "system",
+            "content": f"{SYSTEM_PROMPT}\n{DISCORD_LEAVE_INSTRUCTION}\n{tool_descriptions}",
+        }
         self.conversation = [self.system_block]
 
     async def close(self) -> None:
@@ -85,6 +91,17 @@ class MCPAgentBridge:
     
     def request_stop(self) -> None:
         self._stop_requested = True
+    
+    def set_active_user(self, user_id: int, channel_id: int) -> None:
+        self._active_user_id = user_id
+        self._active_channel_id = channel_id
+    
+    def clear_active_user(self) -> None:
+        self._active_user_id = None
+        self._active_channel_id = None
+    
+    def is_user_active(self, user_id: int, channel_id: int) -> bool:
+        return self._active_user_id == user_id and self._active_channel_id == channel_id
 
     async def run_prompt(self, prompt_text: str, on_tool_call: Callable[[str], Awaitable[None]] | None = None) -> str:
         if not self.session:
@@ -104,11 +121,15 @@ class MCPAgentBridge:
 
             if action == "final":
                 self.conversation.append({"role": "assistant", "content": model_reply})
-                return command.get("message", "Done.")
+                return command.get("message", "")
 
             if action == "ask":
                 self.conversation.append({"role": "assistant", "content": model_reply})
                 return command.get("question", "Please provide more information.")
+
+            if action == "leave":
+                self.conversation.append({"role": "assistant", "content": model_reply})
+                return f"__LEAVE__::{command.get('message', '')}"
 
             if action != "tool":
                 raise RuntimeError(f"Unknown action from model: {command}")
@@ -156,6 +177,21 @@ def split_for_discord(text: str, max_len: int = 1900) -> list[str]:
     return chunks
 
 
+def extract_activation_word_command(text: str) -> str | None:
+    normalized = text.strip().strip('"').strip("'")
+    patterns = [
+        r"^set\s+activation\s+word\s+to\s+(.+)$",
+        r"^activation\s+word\s*=\s*(.+)$",
+        r"^set\s+discord\s+activation\s+word\s+to\s+(.+)$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, normalized, flags=re.IGNORECASE)
+        if match:
+            word = match.group(1).strip().strip('"').strip("'")
+            return word if word else None
+    return None
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Discord bot bridge for the MCP agent")
     parser.add_argument(
@@ -179,6 +215,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 async def main() -> None:
     args = build_arg_parser().parse_args()
+    activation_word = (os.environ.get("DISCORD_ACTIVATION_WORD") or "").strip()
+    if (activation_word.startswith('"') and activation_word.endswith('"')) or (
+        activation_word.startswith("'") and activation_word.endswith("'")
+    ):
+        activation_word = activation_word[1:-1].strip()
+    allowed_user_id_raw = (os.environ.get("DISCORD_USER_ID") or "").strip()
+    allowed_user_id = int(allowed_user_id_raw) if allowed_user_id_raw.isdigit() else None
 
     discord_token = os.environ.get("DISCORD_BOT_TOKEN")
     if not discord_token:
@@ -212,23 +255,34 @@ async def main() -> None:
         if message.author.bot:
             return
 
+        if allowed_user_id is not None and message.author.id != allowed_user_id:
+            return
+
         bot_user = bot.user
         if not bot_user:
             return
 
         is_dm = message.guild is None
         is_mention = bot_user in message.mentions
-        if not is_dm and not is_mention:
+        message_text = message.content.strip()
+        is_activation_word = bool(activation_word) and message_text.lower().startswith(activation_word.lower())
+        # Check if this is an active session or a new message to activate
+        is_active_session = bridge.is_user_active(message.author.id, message.channel.id)
+        is_new_activation = not is_active_session and (is_dm or is_mention or is_activation_word)
+        
+        if not is_active_session and not is_new_activation:
             return
 
         content = message.content
         for mention in (bot_user.mention, f"<@!{bot_user.id}>", f"<@{bot_user.id}>"):
             content = content.replace(mention, "")
+        if is_activation_word and activation_word:
+            content = content[len(activation_word):]
         content = content.strip()
 
-        if not content:
-            await message.reply("Please include a prompt for the agent.", mention_author=False)
-            return
+        # Activate session on first allowed trigger
+        if is_new_activation:
+            bridge.set_active_user(message.author.id, message.channel.id)
 
         if content == "/reset":
             bridge.reset_conversation()
@@ -238,6 +292,39 @@ async def main() -> None:
         if content == "/stop":
             bridge.request_stop()
             await message.reply("Stop requested.", mention_author=False)
+            return
+        
+        requested_activation_word = extract_activation_word_command(content)
+        if requested_activation_word:
+            if not bridge.session:
+                await message.reply("MCP session is not ready yet.", mention_author=False)
+                return
+
+            tool_to_call = None
+            arguments: dict[str, Any] = {}
+            if "set_discord_activation_word" in bridge.tool_names:
+                tool_to_call = "set_discord_activation_word"
+                arguments = {"word": requested_activation_word}
+            elif "edit_env" in bridge.tool_names:
+                tool_to_call = "edit_env"
+                arguments = {
+                    "field": "DISCORD_ACTIVATION_WORD",
+                    "content": requested_activation_word,
+                }
+
+            if not tool_to_call:
+                await message.reply("No env editing tool is available.", mention_author=False)
+                return
+
+            await message.channel.send(f"Model calling tool: {tool_to_call}()")
+            try:
+                await bridge.session.call_tool(tool_to_call, arguments)
+                await message.reply(
+                    f"Activation word updated to: {requested_activation_word}. Restart bot to apply.",
+                    mention_author=False,
+                )
+            except Exception as exc:
+                await message.reply(f"Error updating activation word: {exc}", mention_author=False)
             return
 
         if not bridge.try_acquire():
@@ -260,6 +347,15 @@ async def main() -> None:
         for pending_msg in bridge.pending_messages:
             await message.channel.send(pending_msg)
 
+        if response.startswith("__LEAVE__::"):
+            bridge.clear_active_user()
+            leave_message = response.removeprefix("__LEAVE__::").strip()
+            if leave_message != "":
+                await message.reply(leave_message, mention_author=False)
+            return
+
+        if response.strip() == "":
+            return
         # Then send the final response
         chunks = split_for_discord(response)
         for idx, chunk in enumerate(chunks):

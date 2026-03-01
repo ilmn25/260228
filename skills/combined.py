@@ -10,7 +10,7 @@ from calender import (
     obtain_oauth_token, list_events, create_event, 
     update_event, delete_event, get_event
 )
-from misc import get_time
+from misc import edit_env, get_time
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
@@ -28,7 +28,7 @@ mcp.tool()(get_event)
 
 # Register all misc tools
 mcp.tool()(get_time)
-
+mcp.tool()(edit_env)
 
 def main() -> None:
     """Run the combined MCP server."""
