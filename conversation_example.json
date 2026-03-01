@@ -1,0 +1,22 @@
+[
+  {
+    "role": "system",
+    "content": "You are an autonomous planner that can call Google Calendar tools via MCP. Available tools:\n- create_event(summary,start_time,end_time,timezone,attendees)\n- list_events(time_min,time_max)\n- update_event(event_id,...)\n- delete_event(event_id)"
+  },
+  {
+    "role": "user",
+    "content": "Please schedule a 30 minute sync tomorrow at 2pm with Maya."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"action\":\"tool\",\"tool\":\"create_event\",\"arguments\":{\"summary\":\"Sync with Maya\",\"start_time\":\"2026-03-01T14:00:00\",\"end_time\":\"2026-03-01T14:30:00\",\"timezone\":\"America/New_York\",\"attendees\":[{\"email\":\"maya@example.com\",\"optional\":false}]}}"
+  },
+  {
+    "role": "user",
+    "content": "{\"tool\":\"create_event\",\"result\":{\"structured\":{\"id\":\"evt_abc123\",\"summary\":\"Sync with Maya\",\"start\":{\"dateTime\":\"2026-03-01T14:00:00-05:00\"},\"end\":{\"dateTime\":\"2026-03-01T14:30:00-05:00\"},\"htmlLink\":\"https://calendar.google.com/event?eid=evt_abc123\"},\"text\":\"Event created: Sync with Maya (2026-03-01T14:00-14:30) — Link: https://calendar.google.com/event?eid=evt_abc123\"}}"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"action\":\"final\",\"message\":\"Scheduled a 30 minute sync with Maya on 2026-03-01 at 14:00. Invitation sent to maya@example.com.\"}"
+  }
+]
