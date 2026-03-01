@@ -6,9 +6,7 @@ Provides CRUD operations for Google Calendar events through the Model Context Pr
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
@@ -33,6 +31,7 @@ except Exception:
     pass
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+RecurrenceKeyword = Literal["daily", "weekly", "monthly", "yearly"]
 
 
 def _utcnow_iso() -> str:
@@ -82,6 +81,72 @@ def _normalize_boundary(moment: str, tz_override: str | None) -> dict[str, str]:
     return payload
 
 
+def _to_iso_date(moment: str) -> str:
+    value = moment.strip()
+    if len(value) == 10 and value.count("-") == 2:
+        return value
+    try:
+        return datetime.fromisoformat(value).date().isoformat()
+    except ValueError as exc:
+        raise ValueError("Date must be ISO 8601") from exc
+
+
+def _is_date_only(moment: str) -> bool:
+    value = moment.strip()
+    return len(value) == 10 and value.count("-") == 2
+
+
+def _build_boundaries(
+    start_time: str,
+    end_time: str,
+    timezone: str | None,
+    all_day: bool | None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    if all_day is True:
+        return {"date": _to_iso_date(start_time)}, {"date": _to_iso_date(end_time)}
+
+    if all_day is False and (_is_date_only(start_time) or _is_date_only(end_time)):
+        raise ValueError(
+            "When all_day is false, start_time and end_time must include a time component"
+        )
+
+    return (
+        _normalize_boundary(start_time, timezone),
+        _normalize_boundary(end_time, timezone),
+    )
+
+
+def _boundary_to_input(boundary: dict[str, Any] | None) -> str | None:
+    if not boundary:
+        return None
+    return boundary.get("dateTime") or boundary.get("date")
+
+
+def _normalize_recurrence(recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None) -> list[str] | None:
+    """Map strict recurrence keywords to Google Calendar RRULE lines.
+
+    Accepted values only: "daily", "weekly", "monthly", "yearly".
+    """
+    if recurrence is None:
+        return None
+    raw_items = [recurrence] if isinstance(recurrence, str) else recurrence
+    normalized: list[str] = []
+    freq_map: dict[str, str] = {
+        "daily": "DAILY",
+        "weekly": "WEEKLY",
+        "monthly": "MONTHLY",
+        "yearly": "YEARLY",
+    }
+    for rule in raw_items:
+        key = rule.strip().lower()
+        if key not in freq_map:
+            raise ValueError(
+                "Invalid recurrence value. Allowed values are: daily, weekly, monthly, yearly."
+            )
+        normalized.append(f"RRULE:FREQ={freq_map[key]}")
+    return normalized
+
+
 class Attendee(BaseModel):
     email: str = Field(description="Attendee email address")
     optional: bool = Field(False, description="Mark attendee as optional")
@@ -96,6 +161,8 @@ class EventCreateInput(BaseModel):
     location: str | None = None
     attendees: list[Attendee] | None = None
     conference_meeting: bool = Field(default=False)
+    all_day: bool = Field(default=False)
+    recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None
     send_updates: Literal["all", "externalOnly", "none"] | None = None
 
 
@@ -109,6 +176,8 @@ class EventUpdateInput(BaseModel):
     timezone: str | None = None
     attendees: list[Attendee] | None = None
     conference_meeting: bool | None = None
+    all_day: bool | None = None
+    recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None
     send_updates: Literal["all", "externalOnly", "none"] | None = None
 
     @model_validator(mode='after')
@@ -142,6 +211,7 @@ def _simplify_event(event: dict[str, Any]) -> dict[str, Any]:
         "created": event.get("created"),
         "updated": event.get("updated"),
         "attendees": event.get("attendees", []),
+        "recurrence": event.get("recurrence", []),
     }
 
 
@@ -182,12 +252,6 @@ class GoogleCalendarClient:
         return self._service_cache
 
     def _call_google(self, operation: str, request: Any, params: dict[str, Any] | None = None) -> Any:
-        if params:
-            print(
-                f"[google-call] op={operation} params={json.dumps(params, default=str)}",
-                file=sys.stderr,
-                flush=True,
-            )
         return request.execute()
 
     def list_events(self, filters: EventFilters) -> list[dict[str, Any]]:
@@ -219,10 +283,22 @@ class GoogleCalendarClient:
         return _simplify_event(event)
 
     def update_event(self, payload: EventUpdateInput) -> dict[str, Any]:
+        event_id_to_fetch = payload.event_id
+        
+        if payload.recurrence is not None:
+            get_request = self._service().events().get(
+                calendarId=self.calendar_id, eventId=payload.event_id
+            )
+            temp_resource = self._call_google("events.get", get_request)
+            if "recurringEventId" in temp_resource:
+                event_id_to_fetch = temp_resource["recurringEventId"]
+        
         get_request = self._service().events().get(
-            calendarId=self.calendar_id, eventId=payload.event_id
+            calendarId=self.calendar_id, eventId=event_id_to_fetch
         )
         event_resource = self._call_google("events.get", get_request)
+        actual_event_id = event_id_to_fetch
+        
         if payload.summary is not None:
             event_resource["summary"] = payload.summary
         if payload.description is not None:
@@ -230,18 +306,42 @@ class GoogleCalendarClient:
         if payload.location is not None:
             event_resource["location"] = payload.location
         if payload.start_time is not None:
-            event_resource["start"] = _normalize_boundary(payload.start_time, payload.timezone)
-        if payload.end_time is not None:
-            event_resource["end"] = _normalize_boundary(payload.end_time, payload.timezone)
+            start, end = _build_boundaries(
+                payload.start_time,
+                payload.end_time,
+                payload.timezone,
+                payload.all_day,
+            )
+            event_resource["start"] = start
+            event_resource["end"] = end
+        elif payload.all_day is not None:
+            current_start = _boundary_to_input(event_resource.get("start"))
+            current_end = _boundary_to_input(event_resource.get("end"))
+            if current_start is None or current_end is None:
+                raise ValueError("Existing event is missing start/end data")
+            start, end = _build_boundaries(
+                current_start,
+                current_end,
+                payload.timezone,
+                payload.all_day,
+            )
+            event_resource["start"] = start
+            event_resource["end"] = end
         if payload.attendees is not None:
             event_resource["attendees"] = [attendee.model_dump() for attendee in payload.attendees]
+        if payload.recurrence is not None:
+            recurrence = _normalize_recurrence(payload.recurrence)
+            if recurrence:
+                event_resource["recurrence"] = recurrence
+            else:
+                event_resource.pop("recurrence", None)
         if payload.conference_meeting is not None:
             conference_data = self._build_conference_data(payload.conference_meeting)
             if conference_data is None:
                 event_resource.pop("conferenceData", None)
             else:
                 event_resource["conferenceData"] = conference_data
-        params: dict[str, Any] = {"calendarId": self.calendar_id, "eventId": payload.event_id, "body": event_resource}
+        params: dict[str, Any] = {"calendarId": self.calendar_id, "eventId": actual_event_id, "body": event_resource}
         if payload.send_updates:
             params["sendUpdates"] = payload.send_updates
         if event_resource.get("conferenceData"):
@@ -262,10 +362,16 @@ class GoogleCalendarClient:
         return _simplify_event(event)
 
     def _build_event_body(self, payload: EventCreateInput) -> dict[str, Any]:
+        start, end = _build_boundaries(
+            payload.start_time,
+            payload.end_time,
+            payload.timezone,
+            payload.all_day,
+        )
         body: dict[str, Any] = {
             "summary": payload.summary,
-            "start": _normalize_boundary(payload.start_time, payload.timezone),
-            "end": _normalize_boundary(payload.end_time, payload.timezone),
+            "start": start,
+            "end": end,
         }
         if payload.description:
             body["description"] = payload.description
@@ -273,6 +379,10 @@ class GoogleCalendarClient:
             body["location"] = payload.location
         if payload.attendees:
             body["attendees"] = [attendee.model_dump() for attendee in payload.attendees]
+        if payload.recurrence:
+            recurrence = _normalize_recurrence(payload.recurrence)
+            if recurrence:
+                body["recurrence"] = recurrence
         if payload.conference_meeting:
             body["conferenceData"] = self._build_conference_data(True)
         return body
@@ -354,7 +464,9 @@ async def create_event(
     end_time: str,
     description: str | None = None,
     location: str | None = None,
-    timezone: str | None = None
+    timezone: str | None = None,
+    all_day: bool = False,
+    recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
 ) -> dict[str, Any]:
     """Create a new calendar event with the given summary, time, and optional details.
     
@@ -365,6 +477,9 @@ async def create_event(
         description: Optional event description
         location: Optional event location
         timezone: Optional timezone (e.g., 'Asia/Hong_Kong')
+        all_day: Set true to create an all-day event (uses date boundaries)
+        recurrence: Optional recurrence keyword(s): 'daily', 'weekly', 'monthly', or 'yearly'.
+            You may pass a single value or a list of values.
     """
     payload = EventCreateInput(
         summary=summary,
@@ -372,7 +487,9 @@ async def create_event(
         end_time=end_time,
         description=description,
         location=location,
-        timezone=timezone
+        timezone=timezone,
+        all_day=all_day,
+        recurrence=recurrence,
     )
     client = get_client()
     event = await asyncio.to_thread(client.create_event, payload)
@@ -390,7 +507,9 @@ async def update_event(
     end_time: str | None = None,
     description: str | None = None,
     location: str | None = None,
-    timezone: str | None = None
+    timezone: str | None = None,
+    all_day: bool | None = None,
+    recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
 ) -> dict[str, Any]:
     """Update an existing calendar event by ID.
     
@@ -402,6 +521,9 @@ async def update_event(
         description: New event description (optional)
         location: New event location (optional)
         timezone: Timezone for the times (optional)
+        all_day: Set true/false to switch all-day mode (can be used without start/end)
+        recurrence: Optional recurrence keyword(s): 'daily', 'weekly', 'monthly', or 'yearly'.
+            You may pass a single value or a list of values. Pass [] to clear recurrence.
     """
     payload = EventUpdateInput(
         event_id=event_id,
@@ -410,7 +532,9 @@ async def update_event(
         end_time=end_time,
         description=description,
         location=location,
-        timezone=timezone
+        timezone=timezone,
+        all_day=all_day,
+        recurrence=recurrence,
     )
     client = get_client()
     event = await asyncio.to_thread(client.update_event, payload)
