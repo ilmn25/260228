@@ -1,6 +1,7 @@
 """Miscellaneous utilities exposed via MCP tools."""
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo  # Python 3.9+
 from pathlib import Path
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -11,16 +12,30 @@ mcp = FastMCP("Miscellaneous MCP", instructions="Utility tools", json_response=T
 # Resolve .env path relative to this script's location
 ENV_FILE = Path(__file__).parent.parent / ".env"
  
+def _get_default_timezone() -> str:
+    """Read DEFAULT_TIMEZONE from the .env file, falling back to UTC."""
+    env_vars = _read_env_vars(ENV_FILE)
+    return env_vars.get("DEFAULT_TIMEZONE", "UTC")
+
+
 @mcp.tool()
 async def get_time(ctx: Context[ServerSession, None]) -> dict[str, str]:
-    """Return the current UTC time in ISO 8601 format."""
-    now = datetime.now(timezone.utc).isoformat()
-    await ctx.info(f"Current time is {now}")
-    return {"utc_time": now}
+    """Return the current time in the user's timezone.
+    """
+    tzname = _get_default_timezone()
+    try:
+        tz = ZoneInfo(tzname)
+    except Exception:
+        tz = timezone.utc
+        tzname = "UTC"
+    now = datetime.now(tz).isoformat()
+    await ctx.info(f"Current time in {tzname} is {now}")
+    return {"timezone": tzname, "time": now}
 
 ALLOWED_ENV_VARS = {
     "DISCORD_USER_ID": "Discord user ID for the bot owner",
     "DISCORD_ACTIVATION_WORD": "Word/phrase used to activate the Discord bot session",
+    "DEFAULT_TIMEZONE": "Default timezone to use for time calculations (e.g. UTC or America/New_York)",
 }
 
 
