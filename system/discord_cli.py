@@ -15,7 +15,7 @@ import discord
 from discord.ext import commands
 
 from system.agent import Agent, AgentManager
-from prompts.prompts import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
+from prompts.system import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
 
 # Optional .env support for local development.
 try:
@@ -33,12 +33,14 @@ class DiscordBridge:
     manager: AgentManager = field(init=False)
     agent: Agent | None = field(init=False, default=None)
     _active_session: bool = field(init=False, default=False)
+    _channel: discord.abc.Messageable | None = field(init=False, default=None)
 
     def __init__(self):
         self.manager = AgentManager(
             extra_system_prompt=DISCORD_LEAVE_INSTRUCTION,
         )
         self._active_session = False
+        self._channel = None
 
     async def start(self) -> None:
         """Initialize the agent."""
@@ -70,6 +72,19 @@ class DiscordBridge:
         """Check if there's an active session."""
         return self._active_session
 
+    def set_channel(self, channel: discord.abc.Messageable) -> None:
+        """Set the channel for sending messages."""
+        self._channel = channel
+
+    async def send(self, message: str) -> None:
+        """Send a message to the current channel (like print() for CLI)."""
+        if not self._channel:
+            raise RuntimeError("Channel is not set.")
+        
+        chunks = split_for_discord(message)
+        for chunk in chunks:
+            await self._channel.send(chunk)
+
     async def run_prompt(
         self,
         prompt_text: str,
@@ -79,7 +94,10 @@ class DiscordBridge:
         if not self.agent:
             raise RuntimeError("Agent is not initialized.")
 
-        result = await self.agent.run_prompt(prompt_text, on_tool_call=on_tool_call)
+        result = await self.agent.run_prompt(
+            prompt_text,
+            on_tool_call=on_tool_call,
+        )
         action = result.get("action")
 
         if action == "final":
@@ -175,21 +193,27 @@ async def main() -> None:
         if is_new_activation:
             bridge.activate_session()
 
+        # Set the channel for this message context
+        bridge.set_channel(message.channel)
+
         if content == "/reset":
             bridge.reset_conversation()
-            await message.reply("Conversation reset.", mention_author=False)
+            await bridge.send("Conversation reset.")
             return
         
         if content == "/stop":
             bridge.request_stop()
-            await message.reply("Stop requested.", mention_author=False)
+            await bridge.send("Stop requested.")
             return
 
         async def send_tool_message(msg: str) -> None:
-            await message.channel.send(msg)
+            await bridge.send(msg)
 
         try:
-            response = await bridge.run_prompt(content, on_tool_call=send_tool_message)
+            response = await bridge.run_prompt(
+                content,
+                on_tool_call=send_tool_message,
+            )
         except Exception as exc:
             response = f"Error: {exc}"
 
@@ -197,18 +221,14 @@ async def main() -> None:
             bridge.deactivate_session()
             leave_message = response.removeprefix("__LEAVE__::").strip()
             if leave_message != "":
-                await message.reply(leave_message, mention_author=False)
+                await bridge.send(leave_message)
             return
 
         if response.strip() == "":
             return
-        # Then send the final response
-        chunks = split_for_discord(response)
-        for idx, chunk in enumerate(chunks):
-            if idx == 0:
-                await message.reply(chunk, mention_author=False)
-            else:
-                await message.channel.send(chunk)
+        
+        # Send the final response
+        await bridge.send(response)
 
     try:
         await bot.start(discord_token)

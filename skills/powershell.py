@@ -1,5 +1,6 @@
 import subprocess
 
+
 def run_powershell_command(command: str) -> str:
     """
     Runs a PowerShell command and returns its output as a string.

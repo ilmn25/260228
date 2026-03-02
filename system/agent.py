@@ -198,7 +198,7 @@ class AgentManager:
     ):
         # Read MCP server configuration from environment variables
         self.server_command = os.environ.get("MCP_SERVER_COMMAND", "python")
-        self.server_args = os.environ.get("MCP_SERVER_ARGS", "skills/combined.py").split()
+        self.server_args = os.environ.get("MCP_SERVER_ARGS", "skills/mcp_server.py").split()
         self.model_provider = os.environ.get("MODEL_PROVIDER", "gemini")  # "azure", "github", "gemini", or "ollama"
         self.extra_system_prompt = extra_system_prompt
         self.gh_client: AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient | None = None

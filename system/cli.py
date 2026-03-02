@@ -31,7 +31,7 @@ import asyncio
 import json
 
 from system.agent import AgentManager
-from prompts.prompts import SYSTEM_PROMPT
+from prompts.system import SYSTEM_PROMPT
 
 
 def log_to_file(message: str, log_file: str = "agent_output.log") -> None:
