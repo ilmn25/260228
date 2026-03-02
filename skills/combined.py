@@ -12,12 +12,13 @@ from calender import (
 )
 from misc import edit_env, get_time
 from memory import embed_memory, retrieve_memory, remove_memory
+from search import search
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
 
 # Create a combined MCP instance
-mcp = FastMCP("Combined Skills", instructions="Calendar, miscellaneous, and memory utilities", json_response=True)
+mcp = FastMCP("Combined Skills", instructions="Calendar, miscellaneous, memory, and search utilities", json_response=True)
 
 # Register all calendar tools
 mcp.tool()(obtain_oauth_token)
@@ -35,6 +36,9 @@ mcp.tool()(edit_env)
 mcp.tool()(embed_memory)
 mcp.tool()(retrieve_memory)
 mcp.tool()(remove_memory)
+
+# Register search tools
+mcp.tool()(search)
 
 def main() -> None:
     """Run the combined MCP server."""

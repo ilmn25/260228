@@ -158,6 +158,7 @@ class OllamaClient:
 def parse_model_response(raw: str, tool_names: set[str] | None = None) -> dict[str, Any]:
     """
     Parse and normalize the LLM response into a command dict.
+    Handles cases where the model outputs reasoning/instructions before the JSON.
     
     Returns a dict with:
     - action: "tool", "final", "ask", or "leave"
@@ -165,17 +166,24 @@ def parse_model_response(raw: str, tool_names: set[str] | None = None) -> dict[s
     - arguments: tool arguments (if action is "tool")
     - message/question: content for final/ask/leave actions
     """
+    # First, try to parse the entire response as JSON (handles clean cases)
     try:
         cmd = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        # If multiple JSON objects are concatenated (e.g. streaming),
-        # extract the first valid JSON object and ignore the rest.
+    except json.JSONDecodeError:
+        # Find the first '{' to locate where JSON actually starts
+        start_idx = raw.find('{')
+        if start_idx == -1:
+            raise RuntimeError(
+                f"Model response contains no valid JSON object. Raw response:\n{raw}"
+            )
+        
+        # Try to extract JSON starting from the first '{'
         try:
             decoder = json.JSONDecoder()
-            cmd, _idx = decoder.raw_decode(raw)
-        except json.JSONDecodeError:
+            cmd, _idx = decoder.raw_decode(raw[start_idx:])
+        except json.JSONDecodeError as exc:
             raise RuntimeError(
-                f"Model response was not valid JSON. Raw response:\n{raw}"
+                f"Model response contains invalid JSON. Raw response:\n{raw}"
             ) from exc
 
     # Normalize off-schema responses like:
