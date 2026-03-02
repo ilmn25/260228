@@ -1,4 +1,10 @@
 from __future__ import annotations
+import sys
+from pathlib import Path
+
+parent = str(Path(__file__).resolve().parent.parent)
+if parent not in sys.path:
+    sys.path.insert(0, parent)
 
 import asyncio
 import os
@@ -8,8 +14,8 @@ from typing import Awaitable, Callable
 import discord
 from discord.ext import commands
 
-from agent import Agent, AgentManager
-from prompts import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
+from system.agent import Agent, AgentManager
+from prompts.prompts import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
 
 # Optional .env support for local development.
 try:

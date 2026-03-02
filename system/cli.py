@@ -20,11 +20,18 @@ MCP_SERVER_ARGS (optional): Arguments for MCP server (default: skills/combined.p
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+parent = str(Path(__file__).resolve().parent.parent)
+if parent not in sys.path:
+    sys.path.insert(0, parent)
+
 import asyncio
 import json
 
-from agent import AgentManager
-from prompts import SYSTEM_PROMPT
+from system.agent import AgentManager
+from prompts.prompts import SYSTEM_PROMPT
 
 
 def log_to_file(message: str, log_file: str = "agent_output.log") -> None:

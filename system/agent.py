@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+parent = str(Path(__file__).resolve().parent.parent)
+if parent not in sys.path:
+    sys.path.insert(0, parent)
+
 import json
 import os
 from contextlib import AsyncExitStack
@@ -11,7 +18,7 @@ from typing import Any, Awaitable, Callable, Iterable
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
-from model import AzureModelsClient, GitHubModelsClient, GeminiClient, OllamaClient, parse_model_response
+from system.model import AzureModelsClient, GitHubModelsClient, GeminiClient, OllamaClient, parse_model_response
 
 # Optional .env support
 try:

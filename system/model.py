@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from azure.ai.inference import ChatCompletionsClient
 from azure.core.credentials import AzureKeyCredential
-import google.generativeai as genai
+import google.genai as genai
 from ollama import Client
 from dotenv import load_dotenv
 load_dotenv()
@@ -79,7 +79,7 @@ class GeminiClient:
     def __post_init__(self):
         if not genai:
             raise RuntimeError(
-                "google-generativeai package is required. Install it with: pip install google-generativeai"
+                "google-genai package is required. Install it with: pip install google-genai"
             )
         
         # Read configuration from environment variables
@@ -89,17 +89,17 @@ class GeminiClient:
         
         self.model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
         
-        # Configure the Gemini API
-        genai.configure(api_key=self.api_key)
-        self.client = genai.GenerativeModel(self.model)
+        # Configure the Gemini client
+        self.client = genai.Client(api_key=self.api_key)
 
     def complete(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
         """Call the LLM and return the raw response content."""
         # Convert messages to Gemini format
         contents = self._format_messages_for_gemini(messages)
-        response = self.client.generate_content(
-            contents,
-            generation_config=genai.types.GenerationConfig(
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=genai.types.GenerateContentConfig(
                 temperature=temperature,
             ),
         )
