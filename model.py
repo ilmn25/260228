@@ -168,9 +168,15 @@ def parse_model_response(raw: str, tool_names: set[str] | None = None) -> dict[s
     try:
         cmd = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Model response was not valid JSON. Raw response:\n{raw}"
-        ) from exc
+        # If multiple JSON objects are concatenated (e.g. streaming),
+        # extract the first valid JSON object and ignore the rest.
+        try:
+            decoder = json.JSONDecoder()
+            cmd, _idx = decoder.raw_decode(raw)
+        except json.JSONDecodeError:
+            raise RuntimeError(
+                f"Model response was not valid JSON. Raw response:\n{raw}"
+            ) from exc
 
     # Normalize off-schema responses like:
     # {"action":"create_event","payload":{...}}
