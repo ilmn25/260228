@@ -11,6 +11,7 @@ from calender import (
     update_event, delete_event, get_event
 )
 from misc import edit_env, get_time
+from powershell import run_powershell_command
 from memory import embed_memory, retrieve_memory, remove_memory
 from search import search
 
@@ -37,8 +38,12 @@ mcp.tool()(embed_memory)
 mcp.tool()(retrieve_memory)
 mcp.tool()(remove_memory)
 
+
 # Register search tools
 mcp.tool()(search)
+
+# Register powershell tool
+mcp.tool()(run_powershell_command)
 
 def main() -> None:
     """Run the combined MCP server."""

@@ -1,15 +1,7 @@
 import sys
 import asyncio
 from system import cli, discord_cli
-
-try:
-    import inquirer
-except ImportError:
-    print("Installing inquirer for CLI selection...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "inquirer"])
-    import inquirer
-
+import inquirer
 
 def main():
     questions = [
