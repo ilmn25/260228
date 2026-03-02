@@ -21,22 +21,37 @@ MCP_SERVER_ARGS (optional): Arguments for MCP server (default: skills/combined.p
 from __future__ import annotations
 
 import asyncio
+import json
 
 from agent import AgentManager
 from prompts import SYSTEM_PROMPT
 
 
+def log_to_file(message: str, log_file: str = "agent_output.log") -> None:
+    """Append message to log file."""
+    with open(log_file, 'a') as f:
+        f.write(message + '\n')
+
+
+def print_and_log(message: str, log_file: str = "agent_output.log") -> None:
+    """Print to console and log to file."""
+    print(message)
+    log_to_file(message, log_file)
+
+
 async def run_agent() -> None:
     manager = AgentManager()
+    log_file = "agent_output.log"
+    
+    # Clear log file at start
+    open(log_file, 'w').close()
 
     try:
         agent = await manager.start(SYSTEM_PROMPT)
-        
-        # Persistent REPL mode (always): spawn server once and accept many prompts.
         print("Starting persistent agent. Type prompts, `/reset` to clear conversation, `/exit` to quit.")
 
         while True:
-            prompt_text = await asyncio.to_thread(input, "agent> ")
+            prompt_text = await asyncio.to_thread(input, "> ")
             if not prompt_text:
                 continue
             if prompt_text.strip() in ("/exit", "exit"):
@@ -46,28 +61,34 @@ async def run_agent() -> None:
                 agent.reset_conversation()
                 print("Conversation reset.")
                 continue
-
+            
             try:
                 result = await agent.run_prompt(prompt_text)
+                
+                # Log the full JSON result
+                result_json = json.dumps(result, indent=2, default=str)
+                log_to_file(result_json, log_file)
                 
                 while True:
                     action = result.get("action")
 
                     if action == "final":
-                        print(result.get("message", "Done."))
-                        print("=====================================\n")
+                        message = result.get("message", "Done.")
+                        print(message)
+                        print("=====================================")
                         break
 
                     if action == "ask":
                         question = result.get("question", "Please provide more information:")
                         print(f"agent: {question}")
-                        user_answer = await asyncio.to_thread(input, "you> ")
+                        user_answer = await asyncio.to_thread(input, "> ")
                         result = await agent.continue_with_user_input(user_answer)
                         continue
 
                     if action == "stop":
-                        print(result.get("message", "Stopped."))
-                        print("=====================================\n")
+                        message = result.get("message", "Stopped.")
+                        print(message)
+                        print("=====================================")
                         break
 
                     # Unexpected action
@@ -75,7 +96,8 @@ async def run_agent() -> None:
                     break
 
             except Exception as e:
-                print(f"Error: {e}")
+                error_msg = str(e)
+                print(f"Error: {error_msg}")
                 print("Agent finalizing due to error.")
     finally:
         await manager.close()

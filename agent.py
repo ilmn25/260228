@@ -8,10 +8,10 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable
 
-from azure.ai.inference import ChatCompletionsClient
-from azure.core.credentials import AzureKeyCredential
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
+
+from model import AzureModelsClient, GitHubModelsClient, GeminiClient, OllamaClient, parse_model_response
 
 # Optional .env support
 try:
@@ -19,40 +19,6 @@ try:
     load_dotenv()
 except Exception:
     pass
-
-
-@dataclass
-class AzureModelsClient:
-    token: str
-    model: str = "gpt-4o-mini"
-    endpoint: str = "https://models.inference.ai.azure.com"
-    max_calls_per_prompt: int = 10  # Safety limit to prevent endpoint spam
-
-    def __post_init__(self):
-        # create the Azure ChatCompletionsClient once
-        self.client = ChatCompletionsClient(
-            endpoint=self.endpoint,
-            credential=AzureKeyCredential(self.token),
-        )
-        self.call_count = 0
-
-    def complete(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
-        self.call_count += 1
-        if self.call_count > self.max_calls_per_prompt:
-            raise RuntimeError(
-                f"Azure API call limit exceeded ({self.max_calls_per_prompt} calls per prompt). "
-                "This likely indicates a loop bug. Please review your request."
-            )
-        response = self.client.complete(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-        )
-        return response.choices[0].message["content"].strip()
-    
-    def reset_call_count(self) -> None:
-        """Reset the call counter for a new prompt."""
-        self.call_count = 0
 
 
 def describe_tools(tools: Iterable[types.Tool]) -> str:
@@ -64,28 +30,6 @@ def describe_tools(tools: Iterable[types.Tool]) -> str:
         desc = tool.description or "no description"
         lines.append(f"- {sig}: {desc}")
     return "\n".join(lines)
-
-
-def parse_agent_command(raw: str, tool_names: set[str] | None = None) -> dict[str, Any]:
-    try:
-        cmd = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Model response was not valid JSON. Raw response:\n{raw}"
-        ) from exc
-
-    # Normalize off-schema responses like:
-    # {"action":"create_event","payload":{...}}
-    action = cmd.get("action")
-    if action not in ("tool", "final", "ask", "leave") and tool_names and action in tool_names:
-        args = cmd.get("arguments") or cmd.get("payload") or cmd.get("params") or cmd.get("fields") or {}
-        cmd = {"action": "tool", "tool": action, "arguments": args}
-    
-    # Also normalize if action is 'tool' but using wrong parameter name
-    if action == "tool" and "arguments" not in cmd:
-        cmd["arguments"] = cmd.get("fields") or cmd.get("payload") or cmd.get("params") or {}
-
-    return cmd
 
 
 def serialize_tool_result(result: types.CallToolResult) -> dict[str, Any]:
@@ -103,7 +47,7 @@ class Agent:
 
     def __init__(
         self,
-        gh_client: AzureModelsClient,
+        gh_client: AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient,
         session: ClientSession,
         tool_names: set[str],
         initial_conversation: list[dict[str, str]],
@@ -133,7 +77,7 @@ class Agent:
             return {"action": "stop", "message": "Operation stopped."}
 
         model_reply = self.gh_client.complete(self.conversation)
-        command = parse_agent_command(model_reply, self.tool_names)
+        command = parse_model_response(model_reply, self.tool_names)
         action = command.get("action")
 
         if action == "final":
@@ -228,7 +172,6 @@ class Agent:
 
         self._stop_requested = False
         self.conversation.append({"role": "user", "content": prompt_text})
-        self.gh_client.reset_call_count()
 
         return await self.run_prompt_internal(on_tool_call)
 
@@ -245,30 +188,27 @@ class AgentManager:
     def __init__(
         self,
         extra_system_prompt: str = "",
-        max_calls_per_prompt: int = 10,
     ):
-        # Read all configuration from environment variables
-        self.token = os.environ.get("GITHUB_TOKEN")
-        if not self.token:
-            raise RuntimeError("GITHUB_TOKEN environment variable is required")
-        
-        self.model = os.environ.get("AZURE_MODEL", "gpt-4o-mini")
+        # Read MCP server configuration from environment variables
         self.server_command = os.environ.get("MCP_SERVER_COMMAND", "python")
         self.server_args = os.environ.get("MCP_SERVER_ARGS", "skills/combined.py").split()
-        self.max_calls_per_prompt = max_calls_per_prompt
+        self.model_provider = os.environ.get("MODEL_PROVIDER", "gemini")  # "azure", "github", "gemini", or "ollama"
         self.extra_system_prompt = extra_system_prompt
-        self.gh_client: AzureModelsClient | None = None
+        self.gh_client: AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient | None = None
         self._exit_stack = AsyncExitStack()
         self.session: ClientSession | None = None
         self.agent: Agent | None = None
 
     async def start(self, base_system_prompt: str) -> Agent:
         """Initialize the MCP session and create an Agent."""
-        self.gh_client = AzureModelsClient(
-            token=self.token,
-            model=self.model,
-            max_calls_per_prompt=self.max_calls_per_prompt,
-        )
+        if self.model_provider == "github":
+            self.gh_client = GitHubModelsClient()
+        elif self.model_provider == "gemini":
+            self.gh_client = GeminiClient()
+        elif self.model_provider == "ollama":
+            self.gh_client = OllamaClient()
+        else:
+            self.gh_client = AzureModelsClient()
         
         server_params = StdioServerParameters(
             command=self.server_command,

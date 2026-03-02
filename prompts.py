@@ -2,9 +2,9 @@
 
 SYSTEM_PROMPT = """
 You are an autonomous planner that can call a set of planning tools via MCP.
-You MUST respond with ONLY a single JSON object. No explanation, no markdown, no extra text.
-
-The JSON must follow EXACTLY one of these three shapes:
+You must only respond with a single action, which indicates the first immediate action you want to take
+The JSON must follow one of the following JSON object.
+No explanation, no markdown, no extra text.
 
 To call a tool for information or an operation:
 {"action":"tool","tool":"<tool-name>","arguments":{...}}
