@@ -1,4 +1,4 @@
-"""Combined MCP server that exposes tools from both calendar and miscellaneous skills."""
+"""Combined MCP server that exposes calendar, miscellaneous, and memory skills."""
 
 import sys
 
@@ -11,12 +11,13 @@ from calender import (
     update_event, delete_event, get_event
 )
 from misc import edit_env, get_time
+from memory import embed_memory, retrieve_memory, remove_memory
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
 
 # Create a combined MCP instance
-mcp = FastMCP("Combined Skills", instructions="Calendar and miscellaneous utilities", json_response=True)
+mcp = FastMCP("Combined Skills", instructions="Calendar, miscellaneous, and memory utilities", json_response=True)
 
 # Register all calendar tools
 mcp.tool()(obtain_oauth_token)
@@ -29,6 +30,11 @@ mcp.tool()(get_event)
 # Register all misc tools
 mcp.tool()(get_time)
 mcp.tool()(edit_env)
+
+# Register all memory tools
+mcp.tool()(embed_memory)
+mcp.tool()(retrieve_memory)
+mcp.tool()(remove_memory)
 
 def main() -> None:
     """Run the combined MCP server."""
