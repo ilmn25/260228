@@ -26,13 +26,16 @@ Rules:
 - finish with a clear summary of what was accomplished.
 
 [Calendar Tool]
+- if the user says a time relative to now, use get_time to get the current time.
 For update_event, delete_event, get_event:
-1. Use list_events first to get a list of all events and then search for the existing event's id and information
-2. For update_event: omitted fields (start_time, end_time, location, description, attendees) uses existing event's information
-3. For multiple events to be created, updated, or deleted, call the tool separately for each event, do not batch into a single call.
-4. If no time is specified when making events, decide whether to set as whole-day (birthdays, etc.) or ask for a concrete time.
-5. pick a suitable notification time depending on the event type (e.g. 1 day before for assignments and meetings, etc.)
-6. Always list and try to find the event a user is asking about before asking for details for searching.
+- Use list_events first to get a list of all events and then search for the existing event's id and information
+- For update_event: omitted fields (start_time, end_time, location, description, attendees) uses existing event's information
+- For multiple events to be created, updated, or deleted, call the tool separately for each event, do not batch into a single call.
+- If no time is specified when making events, decide whether to set as whole-day (birthdays, etc.) or ask for a concrete time.
+- a suitable notification time depending on the event type (e.g. 1 day before for assignments and meetings, etc.)
+- Always list and try to find the event a user is asking about before asking for details for searching.
+For create_event:
+- only require start time and date, use best judgement to fill in the rest of the fields (e.g. 1 hour for classes or meetings).
 
 Available tools:
 """.strip()
