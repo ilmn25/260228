@@ -16,14 +16,8 @@ from discord.ext import commands
 
 from system.agent import Agent, AgentManager
 from prompts.system import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
-
-# Optional .env support for local development.
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except Exception:
-    pass
+from dotenv import load_dotenv
+load_dotenv()
 
 
 @dataclass

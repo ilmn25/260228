@@ -9,6 +9,7 @@ parent = str(Path(__file__).resolve().parent.parent)
 if parent not in sys.path:
     sys.path.insert(0, parent)
 
+import log
 import json
 import os
 from contextlib import AsyncExitStack
@@ -85,6 +86,7 @@ class Agent:
 
         model_reply = self.gh_client.complete(self.conversation)
         command = parse_model_response(model_reply, self.tool_names)
+        log.add(str(command))
         action = command.get("action")
 
         if action == "final":
@@ -184,6 +186,7 @@ class Agent:
 
     def reset_conversation(self) -> None:
         """Reset conversation to initial system block."""
+        log.clear()
         if self.conversation:
             system_block = self.conversation[0]
             self.conversation = [system_block]

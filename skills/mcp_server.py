@@ -1,9 +1,12 @@
 """Combined MCP server that exposes calendar, miscellaneous, and memory skills."""
 
 import sys
+from pathlib import Path
 
 # Add the skills directory to the path so we can import the modules
-sys.path.insert(0, '.')
+skills_dir = str(Path(__file__).resolve().parent)
+if skills_dir not in sys.path:
+    sys.path.insert(0, skills_dir)
 
 # Import all the tools from both modules
 from calender import (

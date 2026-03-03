@@ -2,8 +2,9 @@ import subprocess
 
 
 def run_powershell_command(command: str) -> str:
-    """
+    r"""
     Runs a PowerShell command and returns its output as a string.
+    The user's directory is C:\Users\user
     Args:
         command (str): The PowerShell command to execute.
     Returns:
