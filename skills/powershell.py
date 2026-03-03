@@ -1,4 +1,7 @@
 import subprocess
+import threading
+import time
+from typing import List
 
 
 def run_powershell_command(command: str) -> str:
@@ -9,23 +12,50 @@ def run_powershell_command(command: str) -> str:
     - Desktop: C:\Users\user\Desktop
     - Downloads: C:\Users\user\Downloads
     Args:
-        command (str): The PowerShell command to execute.
+        command (str): The PowerShell command to execute, use a verbose format to get output.
     Returns:
         str: The output from the command.
     """
     proc = subprocess.Popen(
-        ["powershell", "-Command", "-NoProfile", command],
+        ["powershell", "-NoProfile", "-Command", command],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1  # line-buffered
     )
 
-    try:
-        stdout, stderr = proc.communicate(timeout=6)
-    except subprocess.TimeoutExpired:
-        return "Command is running."
+    output_lines: List[str] = []
+    error_lines: List[str] = []
+    last_activity = time.time()
 
-    if proc.returncode != 0:
-        return f"Error: {stderr.strip()}"
+    def reader(pipe, collector):
+        nonlocal last_activity
+        for line in iter(pipe.readline, ''):
+            collector.append(line)
+            last_activity = time.time()
+        pipe.close()
 
-    return stdout.strip()
+    # Start threads to read stdout and stderr
+    t_out = threading.Thread(target=reader, args=(proc.stdout, output_lines), daemon=True)
+    t_err = threading.Thread(target=reader, args=(proc.stderr, error_lines), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    # Monitor activity
+    while proc.poll() is None:
+        if time.time() - last_activity > 3:
+            proc.terminate()
+            break
+        time.sleep(0.1)
+
+    # Ensure threads finish
+    t_out.join(timeout=1)
+    t_err.join(timeout=1)
+
+    if proc.returncode not in (0, None):
+        return "Error: " + "".join(error_lines).strip()
+
+    output = "".join(output_lines).strip()
+    if output == "":
+        return "Finished without output or error."
+    return output

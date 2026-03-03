@@ -127,6 +127,7 @@ class Agent:
 
         tool_result: types.CallToolResult = await self.session.call_tool(tool_name, arguments)
         result_payload = serialize_tool_result(tool_result)
+        log.add(f"Tool result: {result_payload}")
         self.conversation.extend(
             [
                 {"role": "assistant", "content": model_reply},
