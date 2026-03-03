@@ -17,6 +17,11 @@ from misc import edit_env, get_time
 from powershell import run_powershell_command
 from memory import embed_memory, retrieve_memory, remove_memory
 from search import search
+from github import (
+    get_repository, create_repository, list_issues, create_issue,
+    list_pull_requests, create_pull_request, get_user, list_repositories,
+    search_repositories, get_file_contents, create_branch, list_commits
+)
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
@@ -41,17 +46,29 @@ mcp.tool()(embed_memory)
 mcp.tool()(retrieve_memory)
 mcp.tool()(remove_memory)
 
-
 # Register search tools
 mcp.tool()(search)
 
 # Register powershell tool
 mcp.tool()(run_powershell_command)
 
+# Register GitHub tools
+mcp.tool()(get_repository)
+mcp.tool()(create_repository)
+mcp.tool()(list_issues)
+mcp.tool()(create_issue)
+mcp.tool()(list_pull_requests)
+mcp.tool()(create_pull_request)
+mcp.tool()(get_user)
+mcp.tool()(search_repositories)
+mcp.tool()(list_repositories)
+mcp.tool()(get_file_contents)
+mcp.tool()(create_branch)
+mcp.tool()(list_commits)
+
 def main() -> None:
     """Run the combined MCP server."""
     mcp.run()
-
 
 if __name__ == "__main__":
     main()

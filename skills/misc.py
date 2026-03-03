@@ -1,24 +1,24 @@
-"""Miscellaneous utilities exposed via MCP tools."""
+"""Miscellaneous utilities."""
 
+import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo  # Python 3.9+
 from pathlib import Path
+from dotenv import load_dotenv
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
-
-mcp = FastMCP("Miscellaneous MCP", instructions="Utility tools", json_response=True)
 
 # Resolve .env path relative to this script's location
 ENV_FILE = Path(__file__).parent.parent / ".env"
+
+# Load environment variables from .env file
+load_dotenv(ENV_FILE)
  
 def _get_default_timezone() -> str:
-    """Read DEFAULT_TIMEZONE from the .env file, falling back to UTC."""
-    env_vars = _read_env_vars(ENV_FILE)
-    return env_vars.get("DEFAULT_TIMEZONE", "UTC")
+    """Read DEFAULT_TIMEZONE from the environment, falling back to UTC."""
+    return os.getenv("DEFAULT_TIMEZONE", "UTC")
 
-
-@mcp.tool()
 async def get_time(ctx: Context[ServerSession, None]) -> dict[str, str]:
     """Return the current time in the user's timezone.
     """
@@ -38,7 +38,6 @@ ALLOWED_ENV_VARS = {
     "DEFAULT_TIMEZONE": "Default timezone to use for time calculations (e.g. UTC or America/New_York)",
 }
 
-
 def _normalize_env_value(value: str) -> str:
     cleaned = value.strip()
     if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
@@ -46,34 +45,13 @@ def _normalize_env_value(value: str) -> str:
     return cleaned
 
 
-def _read_env_vars(env_path: Path) -> dict[str, str]:
-    env_vars: dict[str, str] = {}
-    if env_path.exists():
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    key, value = line.split("=", 1)
-                    env_vars[key.strip()] = value.strip()
-    return env_vars
-
-
-def _write_env_vars(env_path: Path, env_vars: dict[str, str]) -> None:
-    with open(env_path, "w", encoding="utf-8") as f:
-        for key, value in env_vars.items():
-            f.write(f"{key}={value}\n")
-
-
 def _set_env_field(field: str, content: str) -> str:
+    from dotenv import set_key
     cleaned_value = _normalize_env_value(content)
-    env_vars = _read_env_vars(ENV_FILE)
-    env_vars[field] = cleaned_value
-    _write_env_vars(ENV_FILE, env_vars)
+    set_key(ENV_FILE, field, cleaned_value)
     return cleaned_value
 
-@mcp.tool()
+
 async def edit_env(ctx: Context[ServerSession, None], field: str, content: str) -> dict[str, str]:
     """Update an environment variable in the .env file.
     
@@ -93,8 +71,3 @@ async def edit_env(ctx: Context[ServerSession, None], field: str, content: str) 
     await ctx.info(f"Updated {field} in {ENV_FILE}")
     return {"status": "updated", "field": field, "file": ENV_FILE}
 
-def main() -> None:
-    mcp.run()
-
-if __name__ == "__main__":
-    main()
