@@ -13,7 +13,7 @@ from calender import (
     list_events, create_event, 
     update_event, delete_event, get_event
 )
-from system import edit_env, get_time, obtain_oauth_token
+from system import edit_env, get_time, add_oauth_token
 from powershell import run_powershell_command
 from memory import embed_memory, retrieve_memory, remove_memory
 from search import search
@@ -35,7 +35,7 @@ from mcp.server.session import ServerSession
 mcp = FastMCP("Combined Skills", instructions="Calendar, system, memory, and search utilities", json_response=True)
 
 # Register all calendar tools
-mcp.tool()(obtain_oauth_token)
+mcp.tool()(add_oauth_token)
 mcp.tool()(list_events)
 mcp.tool()(create_event)
 mcp.tool()(update_event)

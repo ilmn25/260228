@@ -101,7 +101,7 @@ GOOGLE_SCOPES = {
 }
 
 
-async def obtain_oauth_token(
+async def add_oauth_token(
     ctx: Context[ServerSession, None],
     services: str = "calendar,gmail",
     email: str = ""

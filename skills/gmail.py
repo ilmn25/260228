@@ -34,7 +34,7 @@ def _get_gmail_service(email: str = ""):
     Requires the following **environment variables** be defined:
 
     - `GOOGLE_TOKEN_FILE`: path to an OAuth token JSON file created by the
-      `obtain_oauth_token` flow.
+      `add_oauth_token` flow.
     - `GOOGLE_APPLICATION_CREDENTIALS`: path to a service account JSON key file.
     - `GOOGLE_DEFAULT_EMAIL` (optional): default email to use when email parameter is empty.
 

@@ -184,7 +184,7 @@ The agent has access to the following tools through MCP:
 - `update_event` - Modify existing events
 - `delete_event` - Remove events
 - `get_event` - Get details of specific event
-- `obtain_oauth_token` - Initialize OAuth authentication
+- `add_oauth_token` - Initialize OAuth authentication
 
 ### Utility Skills
 - `get_time` - Get current time in specified timezone
@@ -204,7 +204,7 @@ The agent has access to the following tools through MCP:
 ### Calendar Access
 - Verify `google.json` exists in `env/` folder
 - Ensure calendar is shared with service account email
-- Run `obtain_oauth_token` tool if `token.json` is missing
+- Run `add_oauth_token` tool if `token.json` is missing
 
 ### Discord Bot
 - Ensure bot has proper permissions in your Discord server
