@@ -85,12 +85,12 @@ cp .env.example .env
 | `DISCORD_USER_ID` | Specific Discord user ID to respond to | - |
 | `DISCORD_ACTIVATION_WORD` | Word to activate bot responses | - |
 
-#### Google Calendar Variables:
+#### Google API Variables:
 
 | Variable | Description |
 |----------|-------------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to Google service account JSON (e.g., `env/google.json`) |
-| `GOOGLE_CALENDAR_TOKEN_FILE` | Path to OAuth token file (e.g., `env/token.json`) |
+| `GOOGLE_TOKEN_FILE` | Path to OAuth token file used by calendar, gmail, etc. (e.g., `env/token.json`) |
 | `GOOGLE_CALENDAR_ID` | Your Google Calendar ID (usually email) |
 | `GOOGLE_CALENDAR_TIMEZONE` | Calendar timezone (e.g., `America/New_York`) |
 | `DEFAULT_TIMEZONE` | Default timezone for events (e.g., `America/New_York`) |

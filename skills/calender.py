@@ -237,7 +237,8 @@ class GoogleCalendarClient:
 
     @staticmethod
     def _load_credentials() -> Credentials:
-        token_path = os.environ.get("GOOGLE_CALENDAR_TOKEN_FILE")
+        # Use a generic token environment variable instead of calendar-specific one
+        token_path = os.environ.get("GOOGLE_TOKEN_FILE")
         service_account_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         creds: Credentials | None = None
         if token_path:
@@ -420,23 +421,6 @@ def get_client() -> GoogleCalendarClient:
 
 
 mcp = FastMCP("Google Calendar MCP", instructions="Interact with Google Calendar using CRUD-style tools.", json_response=True)
-
-
-@mcp.tool()
-async def obtain_oauth_token(ctx: Context[ServerSession, None]) -> dict[str, str]:
-    """Run an interactive OAuth flow using google.json and save token.json.
-    
-    Call this to authorize the agent for user account access via OAuth."""
-    try:
-        flow = InstalledAppFlow.from_client_secrets_file("google.json", SCOPES)
-        creds = await asyncio.to_thread(flow.run_local_server, port=0)
-        token_path = "token.json"
-        with open(token_path, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
-        await ctx.info(f"Saved OAuth token to {token_path}")
-        return {"token_file": token_path}
-    except Exception as exc:
-        raise CalendarError(f"Failed to obtain OAuth token: {exc}") from exc
 
 
 def _handle_google_errors(func):
