@@ -38,6 +38,7 @@ ALLOWED_ENV_VARS = {
     "DISCORD_USER_ID": "Discord user ID for the bot owner",
     "DISCORD_ACTIVATION_WORD": "Word/phrase used to activate the Discord bot session",
     "DEFAULT_TIMEZONE": "Default timezone to use for time calculations (e.g. UTC or America/New_York)",
+    "DEFAULT_EMAIL": "Default email account to use for Gmail and Calendar operations",
 }
 
 def _normalize_env_value(value: str) -> str:
@@ -102,16 +103,19 @@ GOOGLE_SCOPES = {
 
 async def obtain_oauth_token(
     ctx: Context[ServerSession, None],
-    services: str = "calendar,gmail"
+    services: str = "calendar,gmail",
+    email: str = ""
 ) -> dict[str, str]:
     """Run an interactive OAuth flow using google.json and save token.json.
     
     This authorizes the agent for user account access to various Google services via OAuth.
+    Supports multiple email accounts by storing tokens in a structured format.
     
     Args:
         services: Comma-separated list of Google services to authorize.
                   Available: calendar, gmail, drive, docs, sheets, tasks
                   Default: "calendar,gmail"
+        email: Email account identifier. If empty, will use the authenticated email.
     
     Returns:
         Dictionary with token_file path and authorized services
@@ -157,16 +161,46 @@ async def obtain_oauth_token(
             token_dir.mkdir(exist_ok=True)
             token_path = token_dir / "token.json"
 
+        # Get the email from credentials if not provided
+        import json
+        creds_dict = json.loads(creds.to_json())
+        account_email = email
+        
+        # For OAuth tokens, we need to make an API call to get the email
+        if not account_email:
+            # Build Gmail service to get the user's email
+            from googleapiclient.discovery import build
+            gmail_service = build('gmail', 'v1', credentials=creds)
+            profile = gmail_service.users().getProfile(userId='me').execute()
+            account_email = profile.get('emailAddress')
+            
+            if not account_email:
+                raise RuntimeError("Unable to determine email address from OAuth credentials")
+        
+        # Load existing tokens or create new structure (multi-email format only)
+        tokens = {}
+        if token_path.exists():
+            try:
+                with open(token_path, "r", encoding="utf-8") as f:
+                    tokens = json.load(f)
+            except (json.JSONDecodeError, KeyError):
+                # If file is corrupted, start fresh
+                tokens = {}
+        
+        # Add or update the token for this email
+        tokens[account_email] = creds_dict
+        
+        # Save the updated tokens
         with open(token_path, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
+            json.dump(tokens, f, indent=2)
 
         await ctx.info(
             f"Successfully authorized for services: {', '.join(requested_services)}\n"
-            f"Saved OAuth token to {token_path}"
+            f"Saved OAuth token for {account_email} to {token_path}"
         )
 
         return {
-            "status": f"Successfully saved OAuth token to {token_path}",
+            "message": f"Successfully saved OAuth token for {account_email} to {token_path}",
             "services": ", ".join(requested_services)
         }
     except Exception as exc:

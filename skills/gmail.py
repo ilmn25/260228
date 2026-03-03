@@ -28,7 +28,7 @@ class GmailError(RuntimeError):
 	"""Raised when Gmail API operations fail."""
 
 
-def _get_gmail_service():
+def _get_gmail_service(email: str = ""):
     """Get an authenticated Gmail API service.
 
     Requires the following **environment variables** be defined:
@@ -36,8 +36,12 @@ def _get_gmail_service():
     - `GOOGLE_TOKEN_FILE`: path to an OAuth token JSON file created by the
       `obtain_oauth_token` flow.
     - `GOOGLE_APPLICATION_CREDENTIALS`: path to a service account JSON key file.
+    - `DEFAULT_EMAIL` (optional): default email to use when email parameter is empty.
 
     One of the variables **must** be set; otherwise a `GmailError` is raised.
+    
+    Args:
+        email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
     """
     token_path_str = os.environ.get("GOOGLE_TOKEN_FILE")
     creds_path_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
@@ -51,10 +55,32 @@ def _get_gmail_service():
     creds = None
 
     if token_path_str:
+        import json
         token_path = Path(token_path_str)
         if not token_path.exists():
             raise GmailError(f"Token file not found: {token_path}")
-        creds = OAuthCredentials.from_authorized_user_file(str(token_path))
+        
+        # Load token file (multi-email format)
+        with open(token_path, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+        
+        target_email = email or os.environ.get("DEFAULT_EMAIL", "")
+        
+        if not target_email:
+            # If no email specified and no default, use the first available
+            if token_data:
+                target_email = list(token_data.keys())[0]
+            else:
+                raise GmailError("No tokens found in token.json")
+        
+        if target_email not in token_data:
+            available = ", ".join(token_data.keys())
+            raise GmailError(
+                f"No token found for email '{target_email}'. "
+                f"Available emails: {available}"
+            )
+        
+        creds = OAuthCredentials.from_authorized_user_info(token_data[target_email])
     elif creds_path_str:
         creds_path = Path(creds_path_str)
         if not creds_path.exists():
@@ -78,18 +104,20 @@ async def get_messages(
 	ctx: Context[ServerSession, None],
 	query: str = "",
 	max_results: int = 10,
+	email: str = "",
 ) -> dict[str, Any]:
 	"""Get Gmail messages matching a query.
 	
 	Args:
 		query: Gmail search query (e.g., "from:user@example.com", "is:unread").
 		max_results: Maximum number of messages to return (default: 10).
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with list of matching messages and message details.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		results = service.users().messages().list(
 			userId='me',
 			q=query,
@@ -132,6 +160,7 @@ async def send_email(
 	body: str,
 	cc: str = "",
 	bcc: str = "",
+	email: str = "",
 ) -> dict[str, str]:
 	"""Send an email via Gmail.
 	
@@ -141,12 +170,13 @@ async def send_email(
 		body: Email body (plain text or HTML).
 		cc: CC recipients (comma-separated).
 		bcc: BCC recipients (comma-separated).
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with the sent message ID.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		
 		message = {
 			'raw': base64.urlsafe_b64encode(
@@ -173,14 +203,18 @@ Subject: {subject}
 
 async def get_labels(
 	ctx: Context[ServerSession, None],
+	email: str = "",
 ) -> dict[str, list]:
 	"""Get all Gmail labels.
+	
+	Args:
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with list of all labels.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		results = service.users().labels().list(userId='me').execute()
 		
 		labels = results.get('labels', [])
@@ -198,17 +232,19 @@ async def get_labels(
 async def mark_as_read(
 	ctx: Context[ServerSession, None],
 	message_id: str,
+	email: str = "",
 ) -> dict[str, str]:
 	"""Mark a Gmail message as read.
 	
 	Args:
 		message_id: The Gmail message ID.
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with status.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		service.users().messages().modify(
 			userId='me',
 			id=message_id,
@@ -224,17 +260,19 @@ async def mark_as_read(
 async def mark_as_unread(
 	ctx: Context[ServerSession, None],
 	message_id: str,
+	email: str = "",
 ) -> dict[str, str]:
 	"""Mark a Gmail message as unread.
 	
 	Args:
 		message_id: The Gmail message ID.
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with status.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		service.users().messages().modify(
 			userId='me',
 			id=message_id,
@@ -250,17 +288,19 @@ async def mark_as_unread(
 async def delete_email(
 	ctx: Context[ServerSession, None],
 	message_id: str,
+	email: str = "",
 ) -> dict[str, str]:
 	"""Delete a Gmail message.
 	
 	Args:
 		message_id: The Gmail message ID.
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with status.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		service.users().messages().delete(
 			userId='me',
 			id=message_id
@@ -275,17 +315,19 @@ async def delete_email(
 async def get_message_details(
 	ctx: Context[ServerSession, None],
 	message_id: str,
+	email: str = "",
 ) -> dict[str, Any]:
 	"""Get full details of a Gmail message.
 	
 	Args:
 		message_id: The Gmail message ID.
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with complete message details.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		msg_data = service.users().messages().get(
 			userId='me',
 			id=message_id,
@@ -328,17 +370,19 @@ async def get_message_details(
 async def get_drafts(
 	ctx: Context[ServerSession, None],
 	max_results: int = 10,
+	email: str = "",
 ) -> dict[str, Any]:
 	"""Get all Gmail drafts.
 	
 	Args:
 		max_results: Maximum number of drafts to return (default: 10).
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with list of draft messages.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		results = service.users().messages().list(
 			userId='me',
 			q='in:draft',
@@ -379,6 +423,7 @@ async def create_draft(
 	body: str,
 	cc: str = "",
 	bcc: str = "",
+	email: str = "",
 ) -> dict[str, str]:
 	"""Create a Gmail draft.
 	
@@ -388,12 +433,13 @@ async def create_draft(
 		body: Draft body (plain text or HTML).
 		cc: CC recipients (comma-separated).
 		bcc: BCC recipients (comma-separated).
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with the draft message ID.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		
 		message = {
 			'raw': base64.urlsafe_b64encode(
@@ -426,6 +472,7 @@ async def update_draft(
 	body: str = "",
 	cc: str = "",
 	bcc: str = "",
+	email: str = "",
 ) -> dict[str, str]:
 	"""Update a Gmail draft.
 	
@@ -436,12 +483,13 @@ async def update_draft(
 		body: New draft body.
 		cc: New CC recipients (comma-separated).
 		bcc: New BCC recipients (comma-separated).
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with status.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		
 		# Get the current draft to preserve fields not specified
 		draft_data = service.users().drafts().get(
@@ -486,17 +534,19 @@ Subject: {final_subject}
 async def delete_draft(
 	ctx: Context[ServerSession, None],
 	draft_id: str,
+	email: str = "",
 ) -> dict[str, str]:
 	"""Delete a Gmail draft.
 	
 	Args:
 		draft_id: The draft ID to delete.
+		email: Email account to use (empty for default).
 	
 	Returns:
 		Dictionary with status.
 	"""
 	try:
-		service = _get_gmail_service()
+		service = _get_gmail_service(email)
 		service.users().drafts().delete(
 			userId='me',
 			id=draft_id

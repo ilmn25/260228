@@ -230,19 +230,56 @@ class GoogleCalendarClient:
     _service_cache: Any | None = field(default=None, init=False, repr=False)
 
     @classmethod
-    def from_env(cls) -> "GoogleCalendarClient":
+    def from_env(cls, email: str = "") -> "GoogleCalendarClient":
+        """Create a GoogleCalendarClient from environment variables.
+        
+        Args:
+            email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+        """
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-        credentials = cls._load_credentials()
+        credentials = cls._load_credentials(email)
         return cls(calendar_id=calendar_id, credentials=credentials)
 
     @staticmethod
-    def _load_credentials() -> Credentials:
+    def _load_credentials(email: str = "") -> Credentials:
+        """Load credentials for the specified email account.
+        
+        Args:
+            email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+        """
         # Use a generic token environment variable instead of calendar-specific one
         token_path = os.environ.get("GOOGLE_TOKEN_FILE")
         service_account_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         creds: Credentials | None = None
         if token_path:
-            creds = OAuthCredentials.from_authorized_user_file(token_path, SCOPES)
+            import json
+            from pathlib import Path
+            token_file = Path(token_path)
+            
+            if not token_file.exists():
+                raise CalendarError(f"Token file not found: {token_path}")
+            
+            # Load token file (multi-email format)
+            with open(token_file, "r", encoding="utf-8") as f:
+                token_data = json.load(f)
+            
+            target_email = email or os.environ.get("DEFAULT_EMAIL", "")
+            
+            if not target_email:
+                # If no email specified and no default, use the first available
+                if token_data:
+                    target_email = list(token_data.keys())[0]
+                else:
+                    raise CalendarError("No tokens found in token.json")
+            
+            if target_email not in token_data:
+                available = ", ".join(token_data.keys())
+                raise CalendarError(
+                    f"No token found for email '{target_email}'. "
+                    f"Available emails: {available}"
+                )
+            
+            creds = OAuthCredentials.from_authorized_user_info(token_data[target_email], SCOPES)
         elif service_account_path:
             creds = service_account.Credentials.from_service_account_file(
                 service_account_path, scopes=SCOPES
@@ -415,9 +452,17 @@ class GoogleCalendarClient:
         }
 
 
-@lru_cache(maxsize=1)
-def get_client() -> GoogleCalendarClient:
-    return GoogleCalendarClient.from_env()
+def get_client(email: str = "") -> GoogleCalendarClient:
+    """Get a GoogleCalendarClient instance for the specified email.
+    
+    Args:
+        email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+    
+    Returns:
+        GoogleCalendarClient instance
+    """
+    # Note: We can't use lru_cache with arguments, so we create clients on demand
+    return GoogleCalendarClient.from_env(email)
 
 
 mcp = FastMCP("Google Calendar MCP", instructions="Interact with Google Calendar using CRUD-style tools.", json_response=True)
@@ -443,7 +488,8 @@ async def list_events(
     query: str | None = None,
     time_min: str | None = None,
     time_max: str | None = None,
-    max_results: int = 10
+    max_results: int = 10,
+    email: str = ""
 ) -> list[dict[str, Any]]:
     """List upcoming calendar events with optional time range and search filters.
     
@@ -452,9 +498,10 @@ async def list_events(
         time_min: Minimum time bound (ISO 8601 format)
         time_max: Maximum time bound (ISO 8601 format)
         max_results: Maximum number of events to return (default 10)
+        email: Email account to use (empty for default)
     """
     filters = EventFilters(query=query, time_min=time_min, time_max=time_max, max_results=max_results)
-    client = get_client()
+    client = get_client(email)
     events = await asyncio.to_thread(client.list_events, filters)
     await ctx.info(f"Fetched {len(events)} events from {client.calendar_id}.")
     return events
@@ -473,6 +520,7 @@ async def create_event(
     all_day: bool = False,
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
     reminders: list[dict[str, Any]] | None = None,
+    email: str = "",
 ) -> dict[str, Any]:
     """Create a new calendar event with the given summary, time, and optional details.
     
@@ -488,6 +536,7 @@ async def create_event(
             You may pass a single value or a list of values.
         reminders: Optional list of reminders. Each reminder should have 'method' ('email' or 'popup') 
             and 'minutes' (0-40320, minutes before event). Example: [{"method": "popup", "minutes": 30}]
+        email: Email account to use (empty for default)
     """
     parsed_reminders = None
     if reminders:
@@ -504,7 +553,7 @@ async def create_event(
         recurrence=recurrence,
         reminders=parsed_reminders,
     )
-    client = get_client()
+    client = get_client(email)
     event = await asyncio.to_thread(client.create_event, payload)
     await ctx.info(f"Created event {event.get('id')}")
     return event
@@ -524,6 +573,7 @@ async def update_event(
     all_day: bool | None = None,
     recurrence: list[RecurrenceKeyword] | RecurrenceKeyword | None = None,
     reminders: list[dict[str, Any]] | None = None,
+    email: str = "",
 ) -> dict[str, Any]:
     """Update an existing calendar event by ID.
     
@@ -540,6 +590,7 @@ async def update_event(
             You may pass a single value or a list of values. Pass [] to clear recurrence.
         reminders: Optional list of reminders. Each reminder should have 'method' ('email' or 'popup') 
             and 'minutes' (0-40320, minutes before event). Example: [{"method": "popup", "minutes": 30}]
+        email: Email account to use (empty for default)
     """
     parsed_reminders = None
     if reminders is not None:
@@ -557,7 +608,7 @@ async def update_event(
         recurrence=recurrence,
         reminders=parsed_reminders,
     )
-    client = get_client()
+    client = get_client(email)
     event = await asyncio.to_thread(client.update_event, payload)
     await ctx.info(f"Updated event {event_id}")
     return event
@@ -565,11 +616,17 @@ async def update_event(
 
 @mcp.tool()
 @_handle_google_errors
-async def delete_event(event_id: str, ctx: Context[ServerSession, None], send_updates: Literal["all", "externalOnly", "none"] | None = None,) -> dict[str, Any]:
+async def delete_event(event_id: str, ctx: Context[ServerSession, None], send_updates: Literal["all", "externalOnly", "none"] | None = None, email: str = "") -> dict[str, Any]:
     """Delete a calendar event by ID. Optionally notify attendees of the cancellation.
     
-    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events."""
-    client = get_client()
+    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events.
+    
+    Args:
+        event_id: Google Calendar event ID
+        send_updates: Whether to send notifications to attendees
+        email: Email account to use (empty for default)
+    """
+    client = get_client(email)
     await asyncio.to_thread(client.delete_event, event_id, send_updates)
     await ctx.info(f"Deleted event {event_id}")
     return {"status": "deleted", "event_id": event_id}
@@ -577,11 +634,16 @@ async def delete_event(event_id: str, ctx: Context[ServerSession, None], send_up
 
 @mcp.tool()
 @_handle_google_errors
-async def get_event(event_id: str, ctx: Context[ServerSession, None]) -> dict[str, Any]:
+async def get_event(event_id: str, ctx: Context[ServerSession, None], email: str = "") -> dict[str, Any]:
     """Fetch full details of a specific calendar event by ID.
     
-    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events."""
-    client = get_client()
+    The event_id can be obtained by calling list_events first to retrieve the 'id' field from returned events.
+    
+    Args:
+        event_id: Google Calendar event ID
+        email: Email account to use (empty for default)
+    """
+    client = get_client(email)
     event = await asyncio.to_thread(client.get_event, event_id)
     await ctx.info(f"Retrieved event {event_id}")
     return event
