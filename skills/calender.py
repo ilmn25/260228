@@ -234,7 +234,7 @@ class GoogleCalendarClient:
         """Create a GoogleCalendarClient from environment variables.
         
         Args:
-            email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+            email: Email account to use. If empty, uses GOOGLE_DEFAULT_EMAIL from environment.
         """
         calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
         credentials = cls._load_credentials(email)
@@ -245,7 +245,7 @@ class GoogleCalendarClient:
         """Load credentials for the specified email account.
         
         Args:
-            email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+            email: Email account to use. If empty, uses GOOGLE_DEFAULT_EMAIL from environment.
         """
         # Use a generic token environment variable instead of calendar-specific one
         token_path = os.environ.get("GOOGLE_TOKEN_FILE")
@@ -263,7 +263,7 @@ class GoogleCalendarClient:
             with open(token_file, "r", encoding="utf-8") as f:
                 token_data = json.load(f)
             
-            target_email = email or os.environ.get("DEFAULT_EMAIL", "")
+            target_email = email or os.environ.get("GOOGLE_DEFAULT_EMAIL", "")
             
             if not target_email:
                 # If no email specified and no default, use the first available
@@ -456,7 +456,7 @@ def get_client(email: str = "") -> GoogleCalendarClient:
     """Get a GoogleCalendarClient instance for the specified email.
     
     Args:
-        email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+        email: Email account to use. If empty, uses GOOGLE_DEFAULT_EMAIL from environment.
     
     Returns:
         GoogleCalendarClient instance

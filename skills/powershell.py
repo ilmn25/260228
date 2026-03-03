@@ -13,13 +13,19 @@ def run_powershell_command(command: str) -> str:
     Returns:
         str: The output from the command.
     """
+    proc = subprocess.Popen(
+        ["powershell", "-Command", "-NoProfile", command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
     try:
-        completed = subprocess.run(
-            ["powershell", "-Command", command],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return completed.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.stderr.strip()}"
+        stdout, stderr = proc.communicate(timeout=6)
+    except subprocess.TimeoutExpired:
+        return "Command is running."
+
+    if proc.returncode != 0:
+        return f"Error: {stderr.strip()}"
+
+    return stdout.strip()

@@ -38,7 +38,7 @@ ALLOWED_ENV_VARS = {
     "DISCORD_USER_ID": "Discord user ID for the bot owner",
     "DISCORD_ACTIVATION_WORD": "Word/phrase used to activate the Discord bot session",
     "DEFAULT_TIMEZONE": "Default timezone to use for time calculations (e.g. UTC or America/New_York)",
-    "DEFAULT_EMAIL": "Default email account to use for Gmail and Calendar operations",
+    "GOOGLE_DEFAULT_EMAIL": "Default email account to use for Gmail and Calendar operations",
 }
 
 def _normalize_env_value(value: str) -> str:

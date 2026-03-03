@@ -125,7 +125,7 @@ def _ensure_index() -> Any:
 
 def _embed_text(text: str, *, input_type: str) -> list[float]:
 	_ = input_type
-	model = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+	model = os.environ.get("PINECONE_OPENAI_EMBED_MODEL", "text-embedding-3-small")
 	client = _get_embeddings_client()
 	response = client.embed(
 		model=model,

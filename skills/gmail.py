@@ -36,12 +36,12 @@ def _get_gmail_service(email: str = ""):
     - `GOOGLE_TOKEN_FILE`: path to an OAuth token JSON file created by the
       `obtain_oauth_token` flow.
     - `GOOGLE_APPLICATION_CREDENTIALS`: path to a service account JSON key file.
-    - `DEFAULT_EMAIL` (optional): default email to use when email parameter is empty.
+    - `GOOGLE_DEFAULT_EMAIL` (optional): default email to use when email parameter is empty.
 
     One of the variables **must** be set; otherwise a `GmailError` is raised.
     
     Args:
-        email: Email account to use. If empty, uses DEFAULT_EMAIL from environment.
+        email: Email account to use. If empty, uses GOOGLE_DEFAULT_EMAIL from environment.
     """
     token_path_str = os.environ.get("GOOGLE_TOKEN_FILE")
     creds_path_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
@@ -64,7 +64,7 @@ def _get_gmail_service(email: str = ""):
         with open(token_path, "r", encoding="utf-8") as f:
             token_data = json.load(f)
         
-        target_email = email or os.environ.get("DEFAULT_EMAIL", "")
+        target_email = email or os.environ.get("GOOGLE_DEFAULT_EMAIL", "")
         
         if not target_email:
             # If no email specified and no default, use the first available
