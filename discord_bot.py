@@ -30,7 +30,7 @@ async def _run_discord(bridge: AgentBridge) -> None:
             " Install it with `pip install discord.py` or run in CLI mode."
         )
 
-    activation_word = (os.environ.get("DISCORD_ACTIVATION_WORD") or "").strip()
+    activation_word = (os.environ.get("ACTIVATION_WORD") or "").strip()
     if (activation_word.startswith('"') and activation_word.endswith('"')) or (
         activation_word.startswith("'") and activation_word.endswith("'")):
         activation_word = activation_word[1:-1].strip()

@@ -85,6 +85,14 @@ cp .env.example .env
 | `OLLAMA_NUM_CTX` | Ollama context window size | `8192` |
 | `DISCORD_USER_ID` | Specific Discord user ID to respond to | - |
 | `DISCORD_ACTIVATION_WORD` | Word to activate bot responses | - |
+| `ACTIVATION_WORD` | Word to activate bot responses (for Discord and Speech) | - |
+| `ENABLE_SPEECH_ON_START` | Set initial runtime speech input state on startup (`true`/`false`) | `false` |
+
+> **Tip:** You can also modify the `.env` file programmatically using the
+> `edit_env` tool exposed by the system skill. It will only update keys that
+> already exist in the file (to avoid typos); add new variables manually if
+> needed.  The dictionary above documents several common entries but isn’t a
+> validation list.
 
 #### Google API Variables:
 
@@ -125,6 +133,12 @@ Run the main entry point which handles both the built-in CLI and the
 Discord bot.  The bot will start automatically when `DISCORD_BOT_TOKEN` is
 set (or you can force it with `--bot`).
 
+Speech listening runs automatically alongside CLI/bot. Transcriptions are only
+sent when runtime speech input is enabled. The startup default is controlled by
+`ENABLE_SPEECH_ON_START`, and can be toggled at runtime with `set_speech_mode`.
+
+
+
 ```bash
 python main.py              # CLI + bot if token present
 python main.py --bot        # CLI + bot (regardless of token)
@@ -158,7 +172,10 @@ python discord_cli.py
 - Responds to mentions or activation word
 - Can be limited to specific user with `DISCORD_USER_ID`
 - Maintains conversation context per channel
+### Utilities
 
+- `edit_env(field, content)` – change a key that already exists in `.env`
+- `list_env()` – list variable names defined in `.env` (values omitted)
 ## Project Structure
 
 ```
@@ -166,6 +183,7 @@ python discord_cli.py
 ├── main.py               # Entry point for CLI and Discord bot
 ├── discord_bridge.py     # Shared bridge class and helpers
 ├── cli.py                # Terminal CLI interface and prompt handling
+├── speech.py             # Speech-to-text helper using Whisper
 ├── discord_bot.py        # Discord-specific event handlers
 ├── config.py             # Configuration helpers
 ├── log.py                # Logging helpers

@@ -16,7 +16,7 @@ parent = str(Path(__file__).resolve().parent)
 if parent not in sys.path:
     sys.path.insert(0, parent)
 
-from prompts.system import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION
+from prompts.system import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION, SPEECH_INPUT_PROMPT
 from system.agent import Agent, AgentManager
 
 
@@ -28,9 +28,9 @@ class AgentBridge:
     provides a thin ``process_prompt`` façade.
     """
 
-    def __init__(self):
+    def __init__(self, extra_system_prompt: str = DISCORD_LEAVE_INSTRUCTION):
         self.manager: AgentManager = AgentManager(
-            extra_system_prompt=DISCORD_LEAVE_INSTRUCTION,
+            extra_system_prompt=extra_system_prompt,
         )
         self.agent: Agent | None = None
         self._active_session: bool = False

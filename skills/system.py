@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
+from runtime_state import set_speech_enabled
 
 # Resolve .env path relative to this script's location
 ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -83,5 +84,19 @@ async def list_env(ctx: Context[ServerSession, None]) -> dict[str, list[str]]:
     keys = list(vars.keys())
     await ctx.info(f"Found {len(keys)} variables in {ENV_FILE}")
     return {"keys": keys}
+
+
+async def set_speech_mode(ctx: Context[ServerSession, None], enabled: bool) -> dict[str, str]:
+    """Enable or disable speech input at runtime.
+
+    This updates shared runtime state used by the speech listener loop.
+
+    Args:
+        enabled: True to accept speech input, False to ignore speech input.
+    """
+    current = set_speech_enabled(enabled)
+    value = "true" if current else "false"
+    await ctx.info(f"Runtime speech input set to enabled={value}")
+    return {"status": "updated", "field": "speech_enabled", "value": value}
 
 

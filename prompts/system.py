@@ -48,6 +48,15 @@ occasionally leave the message empty when u have nothing to contribute, unless i
 可用工具：
 """.strip()
 
+SPEECH_INPUT_PROMPT = """
+[语音输入特别注意]
+- 重要：语音识别不可靠，可能会错误识别单词
+- 寻找发音相似的词、同音词和音近词
+- 对工具名称和参数要灵活 - 匹配用户意图而不是精确的词
+- 如果转录的命令看起来不寻常，考虑用户真正想说的是什么
+- 不要因为小的转录错误就拒绝命令 - 使用上下文推断正确的含义
+"""
+
 DISCORD_LEAVE_INSTRUCTION = (
 """
 Discord 会话规则：只有当用户明确说再见（例如 'bye', 'goodbye'）时，

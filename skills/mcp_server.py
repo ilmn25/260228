@@ -13,7 +13,7 @@ from calender import (
     list_events, create_event, 
     update_event, delete_event, get_event
 )
-from system import edit_env, get_time
+from system import edit_env, get_time, list_env, set_speech_mode
 from google_auth import add_oauth_token, list_authed_emails
 from powershell import run_powershell_command, open_with_powershell
 from memory import embed_memory, retrieve_memory, remove_memory
@@ -47,6 +47,7 @@ mcp.tool()(get_time)
 mcp.tool()(edit_env)
 # expose a tool for enumerating the current .env variables
 mcp.tool()(list_env)
+mcp.tool()(set_speech_mode)
 
 # Register Google auth tools
 mcp.tool()(list_authed_emails)
