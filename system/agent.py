@@ -192,6 +192,44 @@ class Agent:
             system_block = self.conversation[0]
             self.conversation = [system_block]
 
+    async def process_prompt(
+        self,
+        content: str,
+        send: Callable[[str], Awaitable[None]],
+    ) -> tuple[str, str]:
+        """Handle a user prompt and return ``(message, action)``.
+
+        This method encapsulates the old bridge logic: built-in commands,
+        running the prompt loop, logging the raw result, and converting the
+        returned dict into a simple message/action tuple.  The bridge merely
+        dispatches the resulting string and handles any session state changes
+        indicated by the action.
+        """
+        # built-in commands operate directly on the agent
+        if content == "/reset":
+            self.reset_conversation()
+            return ("Conversation reset.", "final")
+        if content == "/stop":
+            self.request_stop()
+            return ("Stop requested.", "final")
+
+        try:
+            result = await self.run_prompt(content, on_tool_call=send)
+        except Exception as exc:
+            result = {"action": "final", "message": f"Error: {exc}"}
+
+        # convert to message/action tuple
+        action = result.get("action")
+        if action == "final":
+            return (result.get("message", ""), "final")
+        if action == "ask":
+            return (result.get("question", "Please provide more information."), "ask")
+        if action == "leave":
+            return (result.get("message", ""), "leave")
+        if action == "stop":
+            return ("Operation stopped.", "stop")
+        raise RuntimeError(f"Unexpected action from agent: {action}")
+
 
 class AgentManager:
     """Manages MCP session lifecycle and Agent creation."""

@@ -100,7 +100,7 @@ def _get_gmail_service(email: str = ""):
     return build('gmail', 'v1', credentials=creds)
 
 
-async def get_emails(
+async def list_emails(
 	ctx: Context[ServerSession, None],
 	query: str = "",
 	max_results: int = 8,

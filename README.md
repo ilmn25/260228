@@ -119,13 +119,19 @@ cp .env.example .env
 
 ## Usage
 
-### CLI Mode (Recommended for Testing)
+### Terminal CLI Mode (Recommended for Testing)
 
-Run the interactive command-line interface:
+Run the main entry point which handles both the built-in CLI and the
+Discord bot.  The bot will start automatically when `DISCORD_BOT_TOKEN` is
+set (or you can force it with `--bot`).
 
 ```bash
-python cli.py
+python main.py              # CLI + bot if token present
+python main.py --bot        # CLI + bot (regardless of token)
 ```
+
+CLI-only mode is no longer a thing; there’s no need for a separate
+script.
 
 **Commands:**
 - Type your prompts at the `>` prompt
@@ -157,12 +163,14 @@ python discord_cli.py
 
 ```
 260228/
-├── agent.py              # Core agent logic and MCP integration
-├── cli.py                # Command-line interface
-├── discord_cli.py        # Discord bot interface
-├── model.py              # LLM provider implementations
-├── prompts.py            # System prompts (default language)
-├── prompts_english.py    # English language prompts
+├── main.py               # Entry point for CLI and Discord bot
+├── discord_bridge.py     # Shared bridge class and helpers
+├── cli.py                # Terminal CLI interface and prompt handling
+├── discord_bot.py        # Discord-specific event handlers
+├── config.py             # Configuration helpers
+├── log.py                # Logging helpers
+├── system/               # Core agent & model code
+├── prompts/              # System prompts
 ├── requirements.txt      # Python dependencies
 ├── .env                  # Environment variables (create from .env.example)
 ├── .env.example          # Example environment configuration
@@ -268,4 +276,4 @@ For issues or questions, please check:
 - [ ] `.env` file created with required variables
 - [ ] Google credentials configured (if using calendar)
 - [ ] API keys obtained and configured
-- [ ] Tested with `python cli.py`
+- [ ] Tested running CLI alone and with the bot (`--bot` or token)

@@ -41,7 +41,7 @@ occasionally leave the message empty when u have nothing to contribute, unless i
 - 写入记录时，尽量只保存相关要点。
 
 [gmail]
-- 对于需要访问 get_emails 的操作，先用 list_authed_emails 获取授权的邮箱列表。
+- 对于需要访问 list_emails 的操作，先用 list_authed_emails 获取授权的邮箱列表。
 - list_emails: you must list for all authorized accounts unless stated otherwise
 - 如果没有授权的邮箱，先用 add_oauth_token 获取授权。 
 - 对于创建或删除邮件，如果用户没有指定发件人邮箱，默认使用环境变量 `GOOGLE_DEFAULT_EMAIL` 中的邮箱。

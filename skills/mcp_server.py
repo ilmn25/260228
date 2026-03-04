@@ -24,7 +24,7 @@ from github import (
     search_repositories, get_file_contents, create_branch, list_commits
 )
 from gmail import (
-    get_emails, send_email, get_labels, mark_as_read, mark_as_unread,
+    list_emails, send_email, get_labels, mark_as_read, mark_as_unread,
     delete_email, get_email_details, get_drafts, create_draft, update_draft,
     delete_draft
 )
@@ -78,7 +78,7 @@ mcp.tool()(create_branch)
 mcp.tool()(list_commits)
 
 # Register Gmail tools
-mcp.tool()(get_emails)
+mcp.tool()(list_emails)
 mcp.tool()(send_email)
 mcp.tool()(get_labels)
 mcp.tool()(mark_as_read)
