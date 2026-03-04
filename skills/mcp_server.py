@@ -13,7 +13,8 @@ from calender import (
     list_events, create_event, 
     update_event, delete_event, get_event
 )
-from system import edit_env, get_time, add_oauth_token
+from system import edit_env, get_time
+from google_auth import add_oauth_token, list_authed_emails
 from powershell import run_powershell_command
 from memory import embed_memory, retrieve_memory, remove_memory
 from search import search
@@ -23,8 +24,8 @@ from github import (
     search_repositories, get_file_contents, create_branch, list_commits
 )
 from gmail import (
-    get_messages, send_email, get_labels, mark_as_read, mark_as_unread,
-    delete_email, get_message_details, get_drafts, create_draft, update_draft,
+    get_emails, send_email, get_labels, mark_as_read, mark_as_unread,
+    delete_email, get_email_details, get_drafts, create_draft, update_draft,
     delete_draft
 )
 
@@ -34,8 +35,7 @@ from mcp.server.session import ServerSession
 # Create a combined MCP instance
 mcp = FastMCP("Combined Skills", instructions="Calendar, system, memory, and search utilities", json_response=True)
 
-# Register all calendar tools
-mcp.tool()(add_oauth_token)
+# Register all calendar tools 
 mcp.tool()(list_events)
 mcp.tool()(create_event)
 mcp.tool()(update_event)
@@ -45,6 +45,10 @@ mcp.tool()(get_event)
 # Register all system tools
 mcp.tool()(get_time)
 mcp.tool()(edit_env)
+
+# Register Google auth tools
+mcp.tool()(list_authed_emails)
+mcp.tool()(add_oauth_token)
 
 # Register all memory tools
 mcp.tool()(embed_memory)
@@ -72,13 +76,13 @@ mcp.tool()(create_branch)
 mcp.tool()(list_commits)
 
 # Register Gmail tools
-mcp.tool()(get_messages)
+mcp.tool()(get_emails)
 mcp.tool()(send_email)
 mcp.tool()(get_labels)
 mcp.tool()(mark_as_read)
 mcp.tool()(mark_as_unread)
 mcp.tool()(delete_email)
-mcp.tool()(get_message_details)
+mcp.tool()(get_email_details)
 mcp.tool()(get_drafts)
 mcp.tool()(create_draft)
 mcp.tool()(update_draft)

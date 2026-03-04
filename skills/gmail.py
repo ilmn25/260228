@@ -100,21 +100,21 @@ def _get_gmail_service(email: str = ""):
     return build('gmail', 'v1', credentials=creds)
 
 
-async def get_messages(
+async def get_emails(
 	ctx: Context[ServerSession, None],
 	query: str = "",
-	max_results: int = 10,
+	max_results: int = 8,
 	email: str = "",
 ) -> dict[str, Any]:
-	"""Get Gmail messages matching a query.
+	"""Get Gmail emails matching a query.
 	
 	Args:
 		query: Gmail search query (e.g., "from:user@example.com", "is:unread").
-		max_results: Maximum number of messages to return (default: 10).
+		max_results: Maximum number of emails to return (default: 8).
 		email: Email account to use (empty for default).
 	
 	Returns:
-		Dictionary with list of matching messages and message details.
+		Dictionary with list of matching emails and email details.
 	"""
 	try:
 		service = _get_gmail_service(email)
@@ -124,10 +124,10 @@ async def get_messages(
 			maxResults=max_results
 		).execute()
 		
-		messages = results.get('messages', [])
-		message_list = []
+		emails = results.get('messages', [])
+		email_list = []
 		
-		for msg in messages:
+		for msg in emails:
 			msg_data = service.users().messages().get(
 				userId='me',
 				id=msg['id'],
@@ -139,7 +139,7 @@ async def get_messages(
 			sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
 			date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
 			
-			message_list.append({
+			email_list.append({
 				'id': msg['id'],
 				'subject': subject,
 				'from': sender,
@@ -147,10 +147,10 @@ async def get_messages(
 				'snippet': msg_data.get('snippet', ''),
 			})
 		
-		await ctx.info(f"Found {len(message_list)} messages matching query: {query}")
-		return {'messages': message_list, 'count': len(message_list)}
+		await ctx.info(f"Found {len(email_list)} emails matching query: {query}")
+		return {'emails': email_list, 'count': len(email_list)}
 	except HttpError as error:
-		raise GmailError(f"Failed to get messages: {error}") from error
+		raise GmailError(f"Failed to get emails: {error}") from error
 
 
 async def send_email(
@@ -173,7 +173,7 @@ async def send_email(
 		email: Email account to use (empty for default).
 	
 	Returns:
-		Dictionary with the sent message ID.
+		Dictionary with the sent email ID.
 	"""
 	try:
 		service = _get_gmail_service(email)
@@ -196,7 +196,7 @@ Subject: {subject}
 		).execute()
 		
 		await ctx.info(f"Email sent to {to} with subject '{subject}'")
-		return {'message_id': sent_message['id'], 'status': 'sent'}
+		return {'email_id': sent_message['id'], 'status': 'sent'}
 	except HttpError as error:
 		raise GmailError(f"Failed to send email: {error}") from error
 
@@ -231,13 +231,13 @@ async def get_labels(
 
 async def mark_as_read(
 	ctx: Context[ServerSession, None],
-	message_id: str,
+	email_id: str,
 	email: str = "",
 ) -> dict[str, str]:
-	"""Mark a Gmail message as read.
+	"""Mark a Gmail email as read.
 	
 	Args:
-		message_id: The Gmail message ID.
+		email_id: The Gmail email ID.
 		email: Email account to use (empty for default).
 	
 	Returns:
@@ -247,25 +247,25 @@ async def mark_as_read(
 		service = _get_gmail_service(email)
 		service.users().messages().modify(
 			userId='me',
-			id=message_id,
+			id=email_id,
 			body={'removeLabelIds': ['UNREAD']}
 		).execute()
 		
-		await ctx.info(f"Marked message {message_id} as read")
-		return {'message_id': message_id, 'status': 'marked as read'}
+		await ctx.info(f"Marked email {email_id} as read")
+		return {'email_id': email_id, 'status': 'marked as read'}
 	except HttpError as error:
-		raise GmailError(f"Failed to mark message as read: {error}") from error
+		raise GmailError(f"Failed to mark email as read: {error}") from error
 
 
 async def mark_as_unread(
 	ctx: Context[ServerSession, None],
-	message_id: str,
+	email_id: str,
 	email: str = "",
 ) -> dict[str, str]:
-	"""Mark a Gmail message as unread.
+	"""Mark a Gmail email as unread.
 	
 	Args:
-		message_id: The Gmail message ID.
+		email_id: The Gmail email ID.
 		email: Email account to use (empty for default).
 	
 	Returns:
@@ -275,25 +275,24 @@ async def mark_as_unread(
 		service = _get_gmail_service(email)
 		service.users().messages().modify(
 			userId='me',
-			id=message_id,
+			id=email_id,
 			body={'addLabelIds': ['UNREAD']}
 		).execute()
 		
-		await ctx.info(f"Marked message {message_id} as unread")
-		return {'message_id': message_id, 'status': 'marked as unread'}
+		await ctx.info(f"Marked email {email_id} as unread")
+		return {'email_id': email_id, 'status': 'marked as unread'}
 	except HttpError as error:
-		raise GmailError(f"Failed to mark message as unread: {error}") from error
-
+		raise GmailError(f"Failed to mark email as unread: {error}") from error
 
 async def delete_email(
 	ctx: Context[ServerSession, None],
-	message_id: str,
+	email_id: str,
 	email: str = "",
 ) -> dict[str, str]:
-	"""Delete a Gmail message.
+	"""Delete a Gmail email.
 	
 	Args:
-		message_id: The Gmail message ID.
+		email_id: The Gmail email ID.
 		email: Email account to use (empty for default).
 	
 	Returns:
@@ -303,34 +302,33 @@ async def delete_email(
 		service = _get_gmail_service(email)
 		service.users().messages().delete(
 			userId='me',
-			id=message_id
+			id=email_id
 		).execute()
 		
-		await ctx.info(f"Deleted message {message_id}")
-		return {'message_id': message_id, 'status': 'deleted'}
+		await ctx.info(f"Deleted email {email_id}")
+		return {'email_id': email_id, 'status': 'deleted'}
 	except HttpError as error:
-		raise GmailError(f"Failed to delete message: {error}") from error
+		raise GmailError(f"Failed to delete email: {error}") from error
 
-
-async def get_message_details(
+async def get_email_details(
 	ctx: Context[ServerSession, None],
-	message_id: str,
+	email_id: str,
 	email: str = "",
 ) -> dict[str, Any]:
-	"""Get full details of a Gmail message.
+	"""Get full details of a Gmail email.
 	
 	Args:
-		message_id: The Gmail message ID.
+		email_id: The Gmail email ID.
 		email: Email account to use (empty for default).
 	
 	Returns:
-		Dictionary with complete message details.
+		Dictionary with complete email details.
 	"""
 	try:
 		service = _get_gmail_service(email)
 		msg_data = service.users().messages().get(
 			userId='me',
-			id=message_id,
+			id=email_id,
 			format='full'
 		).execute()
 		
@@ -353,9 +351,9 @@ async def get_message_details(
 			if data:
 				body = base64.urlsafe_b64decode(data).decode('utf-8')
 		
-		await ctx.info(f"Retrieved details for message {message_id}")
+		await ctx.info(f"Retrieved details for email {email_id}")
 		return {
-			'id': message_id,
+			'id': email_id,
 			'subject': subject,
 			'from': sender,
 			'to': to,
@@ -369,13 +367,13 @@ async def get_message_details(
 
 async def get_drafts(
 	ctx: Context[ServerSession, None],
-	max_results: int = 10,
+	max_results: int = 8,
 	email: str = "",
 ) -> dict[str, Any]:
 	"""Get all Gmail drafts.
 	
 	Args:
-		max_results: Maximum number of drafts to return (default: 10).
+		max_results: Maximum number of drafts to return (default: 8).
 		email: Email account to use (empty for default).
 	
 	Returns:
