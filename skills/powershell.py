@@ -59,3 +59,16 @@ def run_powershell_command(command: str) -> str:
     if output == "":
         return "Finished without output or error."
     return output
+
+
+def open_with_powershell(target: str) -> str:
+    r"""
+    Opens a website URL or executable/shortcut.
+    Args:
+        target (str): URL or filesystem path to open.
+    Returns:
+        str: The output from the command.
+    """
+    command = f"Start-Process '{target}'"
+    return run_powershell_command(command)
+

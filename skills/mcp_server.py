@@ -15,7 +15,7 @@ from calender import (
 )
 from system import edit_env, get_time
 from google_auth import add_oauth_token, list_authed_emails
-from powershell import run_powershell_command
+from powershell import run_powershell_command, open_with_powershell
 from memory import embed_memory, retrieve_memory, remove_memory
 from search import search
 from github import (
@@ -58,8 +58,10 @@ mcp.tool()(remove_memory)
 # Register search tools
 mcp.tool()(search)
 
-# Register powershell tool
+# Register powershell tools
 mcp.tool()(run_powershell_command)
+# tool to open URLs or applications using Start-Process
+mcp.tool()(open_with_powershell)
 
 # Register GitHub tools
 mcp.tool()(get_repository)

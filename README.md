@@ -8,6 +8,7 @@ An intelligent agent system built with the Model Context Protocol (MCP) that can
 - 📅 Google Calendar integration (view, create, update, delete events)
 - 💬 CLI and Discord bot interfaces
 - 🔧 Extensible skill system with MCP server
+- 🔗 PowerShell utilities including opening websites or applications
 - 🌐 Time zone aware operations
 
 ## Prerequisites
