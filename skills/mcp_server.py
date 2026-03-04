@@ -45,6 +45,8 @@ mcp.tool()(get_event)
 # Register all system tools
 mcp.tool()(get_time)
 mcp.tool()(edit_env)
+# expose a tool for enumerating the current .env variables
+mcp.tool()(list_env)
 
 # Register Google auth tools
 mcp.tool()(list_authed_emails)

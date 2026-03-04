@@ -1,6 +1,5 @@
 ﻿"""System utilities."""
 
-import asyncio
 import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo  # Python 3.9+
@@ -33,12 +32,6 @@ async def get_time(ctx: Context[ServerSession, None]) -> dict[str, str]:
     await ctx.info(f"Current time in {tzname} is {now}")
     return {"timezone": tzname, "time": now}
 
-ALLOWED_ENV_VARS = {
-    "DISCORD_USER_ID": "Discord user ID for the bot owner",
-    "DISCORD_ACTIVATION_WORD": "Word/phrase used to activate the Discord bot session",
-    "DEFAULT_TIMEZONE": "Default timezone to use for time calculations (e.g. UTC or America/New_York)",
-    "GOOGLE_DEFAULT_EMAIL": "Default email account to use for Gmail and Calendar operations",
-}
 
 def _normalize_env_value(value: str) -> str:
     cleaned = value.strip()
@@ -55,24 +48,40 @@ def _set_env_field(field: str, content: str) -> str:
 
 
 async def edit_env(ctx: Context[ServerSession, None], field: str, content: str) -> dict[str, str]:
-    """Update an environment variable in the .env file.
-    
-    Allowed environment variables:
-    - DISCORD_USER_ID: Discord user ID for the bot owner
-    - DISCORD_ACTIVATION_WORD: Word/phrase used to activate the Discord bot session
-    
+    """Set an existing variable in the `.env` file.
+
+    Only keys that are already defined may be changed, run list_env tool first to see existing keys. 
+
     Args:
-        field: The environment variable name (must be from the allowed list)
-        content: The value to set
+        field: name of the variable to set (must already exist in `.env`)
+        content: value to assign to the variable
     """
-    if field not in ALLOWED_ENV_VARS:
-        raise ValueError(f"Field '{field}' is not allowed. Allowed fields: {', '.join(ALLOWED_ENV_VARS.keys())}")
+    # read existing keys from file
+    from dotenv import dotenv_values
+
+    existing = set(dotenv_values(ENV_FILE).keys())
+    if field not in existing:
+        raise ValueError(
+            f"Field '{field}' is not currently defined in {ENV_FILE}. "
+            "Add it manually or choose an existing key to avoid typos."
+        )
 
     _set_env_field(field, content)
-    
+
     await ctx.info(f"Updated {field} in {ENV_FILE}")
     return {"status": "updated", "field": field, "file": ENV_FILE}
 
 
-# OAuth token handling was moved to `skills/google_auth.py`. Import and call
-# `google_auth.add_oauth_token` for similar functionality.
+async def list_env(ctx: Context[ServerSession, None]) -> dict[str, list[str]]:
+    """Return the names of variables in the `.env` file.
+
+    Only keys are returned; values are omitted to avoid exposing secrets.
+    """
+    from dotenv import dotenv_values
+
+    vars = dict(dotenv_values(ENV_FILE))
+    keys = list(vars.keys())
+    await ctx.info(f"Found {len(keys)} variables in {ENV_FILE}")
+    return {"keys": keys}
+
+
