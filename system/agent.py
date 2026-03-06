@@ -174,7 +174,7 @@ class Agent:
             result = await self._process_once(on_tool_call)
             action = result.get("action")
 
-            if action in ("final", "ask", "leave", "stop"):
+            if action in ("final", "ask", "leave", "stop", "reset"):
                 return result
 
             # action == "tool": just continue the loop
