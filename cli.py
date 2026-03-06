@@ -30,7 +30,7 @@ async def run_terminal_cli(bridge: AgentBridge | None = None) -> None:
     bridge.set_channel(SimpleNamespace(send=_cli_send))
 
     print(
-        "Starting persistent agent. Type prompts, `/reset` to clear conversation, `/exit` to quit."
+        "Starting persistent agent. Type prompts, ask to 'reset' conversation, or type 'exit' to quit."
     )
 
     while True:

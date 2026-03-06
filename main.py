@@ -38,11 +38,20 @@ if __name__ == "__main__":
     use_bot = ("--bot" in args or "bot" in args or
                bool(os.environ.get("DISCORD_BOT_TOKEN")))
     enable_speech_on_start = _env_truthy(os.environ.get("ENABLE_SPEECH_ON_START"))
+    
+    # Parse activation timeout (in seconds)
+    activation_timeout = None
+    timeout_raw = (os.environ.get("ACTIVATION_TIMEOUT") or "").strip()
+    if timeout_raw:
+        try:
+            activation_timeout = float(timeout_raw)
+        except ValueError:
+            print(f"Warning: Invalid ACTIVATION_TIMEOUT value '{timeout_raw}', ignoring")
 
     log.clear()
     async def entry() -> None:
         set_speech_enabled(enable_speech_on_start)
-        bridge = AgentBridge()
+        bridge = AgentBridge(activation_timeout_seconds=activation_timeout)
         
         # Initialize bridge once before spawning concurrent tasks
         # to avoid MCP stdio_client async context switching issues

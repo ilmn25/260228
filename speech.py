@@ -51,11 +51,13 @@ async def stream_from_microphone(
     sample_rate: int = 16000,
     chunk_duration: float = 0.5,
     silence_duration: float = 1.5,
-    energy_threshold: float = 500.0
+    energy_threshold: float = 500.0,
+    activation_word: str = ""
 ) -> None:
     """Stream audio from microphone with automatic speech detection.
     
     Continuously listens to microphone, detects speech, and transcribes automatically.
+    Requires activation word to start session unless already active.
     
     Args:
         bridge: AgentBridge instance for sending transcriptions
@@ -64,6 +66,7 @@ async def stream_from_microphone(
         chunk_duration: Duration of each audio chunk in seconds
         silence_duration: Duration of silence before stopping recording
         energy_threshold: Energy threshold for speech detection
+        activation_word: Word/phrase to activate speech session
     """
     try:
         import pyaudio
@@ -155,8 +158,29 @@ async def stream_from_microphone(
                             transcription = result.get("text", "").strip()
                             
                             if transcription:
-                                print(f"📝 Transcribed: {transcription}\n")
-                                await bridge.process_prompt(transcription, send)
+                                # Check for activation word and session status
+                                is_activation = bool(activation_word) and transcription.lower().startswith(activation_word.lower())
+                                is_session_active = bridge.is_session_active()
+                                
+                                # Only process if session is active or activation word detected
+                                if is_session_active or is_activation:
+                                    # Activate session if this is the activation trigger
+                                    if not is_session_active and is_activation:
+                                        bridge.activate_session()
+                                    
+                                    # Strip activation word from content if present
+                                    content = transcription
+                                    if is_activation and activation_word:
+                                        content = content[len(activation_word):].strip()
+                                    
+                                    print(f"📝 Transcribed: {transcription}\n")
+                                    await bridge.process_prompt(content, send)
+                                else:
+                                    print(f"📝 Transcribed (not activated): {transcription}")
+                                    if activation_word:
+                                        print(f"   (Say '{activation_word}' to activate)\n")
+                                    else:
+                                        print("   (Session inactive)\n")
                             else:
                                 print("   (no speech detected)\n")
                         except FileNotFoundError as err:
@@ -188,7 +212,15 @@ async def run_speech_cli(bridge: AgentBridge | None = None, skip_init: bool = Fa
     ``bridge`` may be provided when running alongside another integration;
     otherwise a fresh bridge is created. The function continuously listens
     for speech and auto-transcribes until interrupted with Ctrl+C.
+    
+    Speech mode supports activation words to start/stop sessions. Set
+    ACTIVATION_WORD environment variable to require voice activation.
     """
+    # Get activation word from environment
+    activation_word = (os.environ.get("ACTIVATION_WORD") or "").strip()
+    if (activation_word.startswith('"') and activation_word.endswith('"')) or (
+        activation_word.startswith("'") and activation_word.endswith("'")):
+        activation_word = activation_word[1:-1].strip()
     try:
         import whisper
         if not hasattr(whisper, "load_model"):
@@ -226,7 +258,7 @@ async def run_speech_cli(bridge: AgentBridge | None = None, skip_init: bool = Fa
 
     # Automatically start streaming mode
     try:
-        await stream_from_microphone(bridge, model, _cli_send)
+        await stream_from_microphone(bridge, model, _cli_send, activation_word=activation_word)
     except Exception as err:
         print(f"Error in streaming mode: {err}")
         print("Tip: Install pyaudio with: pip install pyaudio")

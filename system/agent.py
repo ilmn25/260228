@@ -117,6 +117,13 @@ class Agent:
                 "message": command.get("message", ""),
             }
 
+        if action == "reset":
+            self.conversation.append({"role": "assistant", "content": model_reply})
+            return {
+                "action": "reset",
+                "message": command.get("message", "conversation reset"),
+            }
+
         if action != "tool":
             raise RuntimeError(f"Unknown action from model: {command}")
 
@@ -212,14 +219,6 @@ class Agent:
         dispatches the resulting string and handles any session state changes
         indicated by the action.
         """
-        # built-in commands operate directly on the agent
-        if content == "/reset":
-            self.reset_conversation()
-            return ("Conversation reset.", "final")
-        if content == "/stop":
-            self.request_stop()
-            return ("Stop requested.", "final")
-
         try:
             result = await self.run_prompt(content, on_tool_call=send)
         except Exception as exc:
@@ -233,6 +232,9 @@ class Agent:
             return (result.get("question", "Please provide more information."), "ask")
         if action == "leave":
             return (result.get("message", ""), "leave")
+        if action == "reset":
+            self.reset_conversation()
+            return (result.get("message", "Conversation reset."), "final")
         if action == "stop":
             return ("Operation stopped.", "stop")
         raise RuntimeError(f"Unexpected action from agent: {action}")

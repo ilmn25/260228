@@ -8,6 +8,7 @@ same code can drive CLI, Discord, Slack, etc., without duplication.
 from __future__ import annotations
 
 import sys
+import asyncio
 from pathlib import Path
 from typing import Any, Callable, Awaitable
 
@@ -28,13 +29,15 @@ class AgentBridge:
     provides a thin ``process_prompt`` façade.
     """
 
-    def __init__(self, extra_system_prompt: str = DISCORD_LEAVE_INSTRUCTION):
+    def __init__(self, extra_system_prompt: str = DISCORD_LEAVE_INSTRUCTION, activation_timeout_seconds: float | None = None):
         self.manager: AgentManager = AgentManager(
             extra_system_prompt=extra_system_prompt,
         )
         self.agent: Agent | None = None
         self._active_session: bool = False
         self._channel: Any | None = None
+        self._activation_timeout_seconds = activation_timeout_seconds
+        self._timeout_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Initialize the agent.
@@ -68,17 +71,48 @@ class AgentBridge:
             self.agent.request_stop()
 
     # session helpers -----------------------------------------------------
+    async def _auto_leave_on_timeout(self) -> None:
+        """Auto-deactivate session after timeout expires."""
+        if self._activation_timeout_seconds is None:
+            return
+        
+        try:
+            await asyncio.sleep(self._activation_timeout_seconds)
+            if self._active_session:
+                print(f"⏱️  Session timeout ({self._activation_timeout_seconds}s) - auto-leaving...")
+                self.deactivate_session()
+        except asyncio.CancelledError:
+            pass  # Timeout was cancelled due to user activity
+
     def activate_session(self) -> None:
-        """Mark session as active."""
+        """Mark session as active and start timeout if configured."""
         self._active_session = True
+        # Cancel any existing timeout task
+        if self._timeout_task is not None:
+            self._timeout_task.cancel()
+        # Start a new timeout task if timeout is configured
+        if self._activation_timeout_seconds is not None:
+            self._timeout_task = asyncio.create_task(self._auto_leave_on_timeout())
 
     def deactivate_session(self) -> None:
-        """Mark session as inactive."""
+        """Mark session as inactive and cancel timeout."""
         self._active_session = False
+        # Cancel the timeout task
+        if self._timeout_task is not None:
+            self._timeout_task.cancel()
+            self._timeout_task = None
 
     def is_session_active(self) -> bool:
         """Check if there's an active session."""
         return self._active_session
+
+    def _reset_timeout(self) -> None:
+        """Reset the timeout timer during active session (called on user input)."""
+        if self._active_session and self._activation_timeout_seconds is not None:
+            # Cancel existing timeout and start a new one
+            if self._timeout_task is not None:
+                self._timeout_task.cancel()
+            self._timeout_task = asyncio.create_task(self._auto_leave_on_timeout())
 
     def set_channel(self, channel: Any) -> None:
         """Set the channel for sending messages."""
@@ -111,9 +145,15 @@ class AgentBridge:
         Calls into :class:`Agent` for the core logic, then formats the result
         and handles side‑effects (e.g. deactivating the session on ``leave``)
         before dispatching the text via ``send``.
+        
+        Resets activation timeout on user input during active session.
         """
         if not self.agent:
             raise RuntimeError("Agent is not initialized.")
+
+        # Reset timeout on user input if session is active
+        if self._active_session:
+            self._reset_timeout()
 
         # delegate to agent, which now returns (message, action)
         message, action = await self.agent.process_prompt(content, send)
