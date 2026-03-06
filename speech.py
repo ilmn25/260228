@@ -182,7 +182,7 @@ async def stream_from_microphone(
         p.terminate()
 
 
-async def run_speech_cli(bridge: AgentBridge | None = None) -> None:
+async def run_speech_cli(bridge: AgentBridge | None = None, skip_init: bool = False) -> None:
     """Automatically start continuous voice streaming mode.
 
     ``bridge`` may be provided when running alongside another integration;
@@ -217,8 +217,9 @@ async def run_speech_cli(bridge: AgentBridge | None = None) -> None:
     if bridge is None:
         from prompts.system import SPEECH_INPUT_PROMPT
         bridge = AgentBridge(extra_system_prompt=SPEECH_INPUT_PROMPT)
-
-    await bridge.start()
+        await bridge.start()
+    elif not skip_init:
+        await bridge.start()
 
     async def _cli_send(message: str) -> None:  # noqa: D401
         print(message)

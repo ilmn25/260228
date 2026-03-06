@@ -19,7 +19,14 @@ from typing import Any, Awaitable, Callable, Iterable
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
-from system.model import AzureModelsClient, GitHubModelsClient, GeminiClient, OllamaClient, parse_model_response
+from system.model import (
+    AzureModelsClient,
+    GitHubModelsClient,
+    GeminiClient,
+    OllamaClient,
+    get_model_client,
+    parse_model_response,
+)
 
 # Optional .env support
 try:
@@ -250,14 +257,7 @@ class AgentManager:
 
     async def start(self, base_system_prompt: str) -> Agent:
         """Initialize the MCP session and create an Agent."""
-        if self.model_provider == "github":
-            self.gh_client = GitHubModelsClient()
-        elif self.model_provider == "gemini":
-            self.gh_client = GeminiClient()
-        elif self.model_provider == "ollama":
-            self.gh_client = OllamaClient()
-        else:
-            self.gh_client = AzureModelsClient()
+        self.gh_client = get_model_client(self.model_provider, reuse=True)
         
         server_params = StdioServerParameters(
             command=self.server_command,

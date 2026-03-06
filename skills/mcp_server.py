@@ -13,7 +13,7 @@ from calender import (
     list_events, create_event, 
     update_event, delete_event, get_event
 )
-from system import edit_env, get_time, list_env, set_speech_mode
+from system_tools import edit_env, get_time, list_env, set_speech_mode
 from google_auth import add_oauth_token, list_authed_emails
 from powershell import run_powershell_command, open_with_powershell
 from memory import embed_memory, retrieve_memory, remove_memory
@@ -28,6 +28,7 @@ from gmail import (
     delete_email, get_email_details, get_drafts, create_draft, update_draft,
     delete_draft
 )
+from resume import draft_job_email
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
@@ -63,7 +64,6 @@ mcp.tool()(search)
 
 # Register powershell tools
 mcp.tool()(run_powershell_command)
-# tool to open URLs or applications using Start-Process
 mcp.tool()(open_with_powershell)
 
 # Register GitHub tools
@@ -92,6 +92,9 @@ mcp.tool()(get_drafts)
 mcp.tool()(create_draft)
 mcp.tool()(update_draft)
 mcp.tool()(delete_draft)
+
+# Register resume/job tools
+mcp.tool()(draft_job_email)
 
 def main() -> None:
     """Run the combined MCP server."""

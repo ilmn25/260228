@@ -43,6 +43,11 @@ if __name__ == "__main__":
     async def entry() -> None:
         set_speech_enabled(enable_speech_on_start)
         bridge = AgentBridge()
+        
+        # Initialize bridge once before spawning concurrent tasks
+        # to avoid MCP stdio_client async context switching issues
+        await bridge.start()
+        
         tasks: list[asyncio.Task] = []
 
         if use_bot:
@@ -51,7 +56,7 @@ if __name__ == "__main__":
             tasks.append(asyncio.create_task(run_terminal_cli(bridge)))
         try:
             from speech import run_speech_cli
-            tasks.append(asyncio.create_task(run_speech_cli(bridge)))
+            tasks.append(asyncio.create_task(run_speech_cli(bridge, skip_init=True)))
         except Exception as exc:
             print(f"Speech mode unavailable: {exc}")
 

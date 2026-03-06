@@ -155,6 +155,38 @@ class OllamaClient:
         return full_response.strip()
 
 
+_cached_model_client: AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient | None = None
+_cached_model_provider: str | None = None
+
+
+def get_model_client(
+    model_provider: str | None = None,
+    reuse: bool = True,
+) -> AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient:
+    """Return a model client for the provider, optionally reusing a cached one."""
+    global _cached_model_client, _cached_model_provider
+
+    provider = (model_provider or os.environ.get("MODEL_PROVIDER", "gemini")).strip().lower()
+
+    if reuse and _cached_model_client is not None and _cached_model_provider == provider:
+        return _cached_model_client
+
+    if provider == "github":
+        client: AzureModelsClient | GitHubModelsClient | GeminiClient | OllamaClient = GitHubModelsClient()
+    elif provider == "gemini":
+        client = GeminiClient()
+    elif provider == "ollama":
+        client = OllamaClient()
+    else:
+        client = AzureModelsClient()
+
+    if reuse:
+        _cached_model_client = client
+        _cached_model_provider = provider
+
+    return client
+
+
 def parse_model_response(raw: str, tool_names: set[str] | None = None) -> dict[str, Any]:
     """
     Parse and normalize the LLM response into a command dict.
