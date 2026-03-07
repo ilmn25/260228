@@ -2,3 +2,4 @@
 env/ 
 __pycache__/
 agent_output.log
+error.log

@@ -165,17 +165,14 @@ class AgentBridge:
         if message.strip():
             await send(message)
 
-        # if the model requested a full stop, perform shutdown here so all
-        # front-ends behave the same way.  this mirrors the existing "leave"
-        # logic but for quitting the program instead of just the session.
+        # If stop is requested, close bridge resources and let each front-end
+        # decide how to terminate its own loop/process.
         if action == "stop":
-            # close resources then exit; SystemExit will unwind the event
-            # loop and terminate the process.
+            self.deactivate_session()
             try:
                 await self.close()
             except Exception:
                 pass
-            sys.exit(0)
 
         # propagate action for the caller (mostly useful for CLI tests)
         return action

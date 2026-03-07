@@ -29,6 +29,7 @@ from gmail import (
     delete_draft
 )
 from resume import draft_job_email
+from blackboard import login as blackboard_login
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.session import ServerSession
@@ -95,6 +96,9 @@ mcp.tool()(delete_draft)
 
 # Register resume/job tools
 mcp.tool()(draft_job_email)
+
+# Register Blackboard tools
+mcp.tool()(blackboard_login)
 
 def main() -> None:
     """Run the combined MCP server."""
