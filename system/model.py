@@ -221,7 +221,8 @@ def parse_model_response(raw: str, tool_names: set[str] | None = None) -> dict[s
     # Normalize off-schema responses like:
     # {"action":"create_event","payload":{...}}
     action = cmd.get("action")
-    if action not in ("tool", "final", "ask", "leave", "reset") and tool_names and action in tool_names:
+    # allow models to signal a stop/quit request as well as existing actions
+    if action not in ("tool", "final", "ask", "leave", "reset", "stop") and tool_names and action in tool_names:
         args = cmd.get("arguments") or cmd.get("payload") or cmd.get("params") or cmd.get("fields") or {}
         cmd = {"action": "tool", "tool": action, "arguments": args}
     

@@ -124,6 +124,11 @@ class Agent:
                 "message": command.get("message", "conversation reset"),
             }
 
+        # the model can request that the entire program quit; treat like a stop
+        if action == "stop":
+            self.conversation.append({"role": "assistant", "content": model_reply})
+            return {"action": "stop", "message": command.get("message", "")}   
+
         if action != "tool":
             raise RuntimeError(f"Unknown action from model: {command}")
 
@@ -248,7 +253,8 @@ class AgentManager:
         extra_system_prompt: str = "",
     ):
         # Read MCP server configuration from environment variables
-        self.server_command = os.environ.get("MCP_SERVER_COMMAND", "python")
+        # Default to the same Python interpreter running this process
+        self.server_command = os.environ.get("MCP_SERVER_COMMAND", sys.executable)
         self.server_args = os.environ.get("MCP_SERVER_ARGS", "skills/mcp_server.py").split()
         self.model_provider = os.environ.get("MODEL_PROVIDER", "gemini")  # "azure", "github", "gemini", or "ollama"
         self.extra_system_prompt = extra_system_prompt

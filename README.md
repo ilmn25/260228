@@ -150,7 +150,10 @@ script.
 **Commands:**
 - Type your prompts at the `>` prompt
 - `/reset` - Clear conversation history
-- `/exit` or `exit` - Quit the agent
+- `/exit`, `/quit`, `exit`, or `quit` - Quit the agent locally.  Additionally, if the model itself returns
+  `{"action":"stop"}` the bridge will automatically shut down the entire
+  application regardless of interface, so you don’t need special handling in
+  other front ends.
 
 **Example session:**
 ```

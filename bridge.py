@@ -139,7 +139,7 @@ class AgentBridge:
         self,
         content: str,
         send: Callable[[str], Awaitable[None]],
-    ) -> None:
+    ) -> str:
         """Handle a user prompt and send the resulting message.
 
         Calls into :class:`Agent` for the core logic, then formats the result
@@ -147,6 +147,9 @@ class AgentBridge:
         before dispatching the text via ``send``.
         
         Resets activation timeout on user input during active session.
+
+        Returns the action returned by the agent (e.g. "final", "ask",
+        "leave", "stop"), allowing callers (like the CLI) to react.
         """
         if not self.agent:
             raise RuntimeError("Agent is not initialized.")
@@ -161,6 +164,21 @@ class AgentBridge:
             self.deactivate_session()
         if message.strip():
             await send(message)
+
+        # if the model requested a full stop, perform shutdown here so all
+        # front-ends behave the same way.  this mirrors the existing "leave"
+        # logic but for quitting the program instead of just the session.
+        if action == "stop":
+            # close resources then exit; SystemExit will unwind the event
+            # loop and terminate the process.
+            try:
+                await self.close()
+            except Exception:
+                pass
+            sys.exit(0)
+
+        # propagate action for the caller (mostly useful for CLI tests)
+        return action
 
 
 # ---------------------------------------------------------------------------

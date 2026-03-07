@@ -19,29 +19,25 @@ async def run_terminal_cli(bridge: AgentBridge | None = None) -> None:
     if bridge is None:
         bridge = AgentBridge()
 
-
-    # ensure the agent is started (idempotent)
     await bridge.start()
-    # CLI channel needs an async ``send`` method; print is synchronous so wrap
-    # it in an async function.
     async def _cli_send(message: str) -> None:  # noqa: D401
         print(message)
 
     bridge.set_channel(SimpleNamespace(send=_cli_send))
 
-    print(
-        "Starting persistent agent. Type prompts, ask to 'reset' conversation, or type 'exit' to quit."
-    )
+    try:
+        while True:
+            try:
+                prompt_text = await asyncio.to_thread(input, "> ")
+            except EOFError:
+                print("Input closed, exiting.")
+                break
 
-    while True:
-        prompt_text = await asyncio.to_thread(input, "> ")
-        if not prompt_text:
-            continue
-        stripped = prompt_text.strip()
-        if stripped in ("/exit", "exit"):
-            print("Exiting persistent agent.")
-            break
+            if not prompt_text:
+                continue
 
-        await bridge.process_prompt(prompt_text, bridge.send)
-
-    await bridge.close()
+            await bridge.process_prompt(prompt_text, bridge.send)
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received, shutting down.")
+    finally:
+        await bridge.close()

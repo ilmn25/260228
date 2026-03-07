@@ -90,10 +90,6 @@ async def stream_from_microphone(
         frames_per_buffer=CHUNK
     )
     
-    print("\n🎧 Stream mode active - listening for speech...")
-    print("   Speak naturally, pauses will auto-trigger transcription when enabled")
-    print("   Press Ctrl+C to stop streaming\n")
-    
     recording = False
     frames = []
     silence_chunks = 0
@@ -112,9 +108,12 @@ async def stream_from_microphone(
                     silence_chunks = 0
                 last_enabled_state = speech_enabled
 
-            data = await asyncio.to_thread(
-                lambda: stream.read(CHUNK, exception_on_overflow=False)
-            )
+            try:
+                data = await asyncio.to_thread(
+                    lambda: stream.read(CHUNK, exception_on_overflow=False)
+                )
+            except asyncio.CancelledError:
+                break
 
             if not speech_enabled:
                 continue
@@ -200,6 +199,9 @@ async def stream_from_microphone(
     
     except KeyboardInterrupt:
         print("\n⏹️  Streaming stopped")
+    except asyncio.CancelledError:
+        # gather or loop shutdown cancelled the task; tidy up quietly
+        print("\n⏹️  Streaming cancelled")
     finally:
         stream.stop_stream()
         stream.close()
@@ -259,6 +261,9 @@ async def run_speech_cli(bridge: AgentBridge | None = None, skip_init: bool = Fa
     # Automatically start streaming mode
     try:
         await stream_from_microphone(bridge, model, _cli_send, activation_word=activation_word)
+    except asyncio.CancelledError:
+        # expected when the outer task/gather is cancelled during shutdown
+        pass
     except Exception as err:
         print(f"Error in streaming mode: {err}")
         print("Tip: Install pyaudio with: pip install pyaudio")

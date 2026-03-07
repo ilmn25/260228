@@ -33,7 +33,12 @@ def _env_truthy(value: str | None) -> bool:
 
 
 if __name__ == "__main__":
-    use_cli = True
+    # Detect if running headless (pythonw with no console attached)
+    # When stdin is not a TTY, don't start the CLI
+    import sys
+    has_console = sys.stdin is not None and (hasattr(sys.stdin, 'isatty') and sys.stdin.isatty())
+    
+    use_cli = has_console and "--no-cli" not in sys.argv
     args = sys.argv[1:]
     use_bot = ("--bot" in args or "bot" in args or
                bool(os.environ.get("DISCORD_BOT_TOKEN")))
