@@ -10,14 +10,15 @@ import sys
 from pathlib import Path
 import asyncio
 import os
-from dotenv import load_dotenv
-import log
-from skills.runtime_state import set_speech_enabled
 
-# make sure the parent folder is on sys.path for local imports
+# make sure the workspace root is on sys.path for local imports
 parent = str(Path(__file__).resolve().parent.parent)
 if parent not in sys.path:
     sys.path.insert(0, parent)
+
+from dotenv import load_dotenv
+import log
+from skills.runtime_state import set_speech_enabled
 
 load_dotenv()
 

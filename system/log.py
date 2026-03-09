@@ -2,8 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 import threading
 
-# log file is located next to this script (workspace root assuming log.py placed there)
-LOG_PATH = Path(__file__).resolve().parent / "agent_output.log"
+# log file is located in workspace root (parent of system folder)
+LOG_PATH = Path(__file__).resolve().parent.parent / "agent_output.log"
 
 _lock = threading.Lock()
 

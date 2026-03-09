@@ -1,300 +1,183 @@
-# MCP-Aware AI Agent
+# Multi-Interface AI Agent
 
-An intelligent agent system built with the Model Context Protocol (MCP) that can interact through CLI or Discord. The agent supports multiple LLM providers and includes calendar management and utility skills.
+A flexible AI agent system supporting Discord bot, terminal CLI, and speech-to-text interfaces. Built with MCP (Model Context Protocol) integration for extensible tool calling and task automation.
 
 ## Features
 
-- 🤖 Multiple LLM provider support (Azure AI, GitHub Models, Google Gemini, Ollama)
-- 📅 Google Calendar integration (view, create, update, delete events)
-- 💬 CLI and Discord bot interfaces
-- 🔧 Extensible skill system with MCP server
-- 🔗 PowerShell utilities including opening websites or applications
-- 🌐 Time zone aware operations
+**Multiple Interfaces**
+- Discord bot with activation word and session timeout
+- Terminal CLI for direct interaction
+- Speech-to-text input using Whisper (optional)
+- Concurrent operation (run CLI and Discord bot simultaneously)
 
-## Prerequisites
+**AI Model Support**
+- Ollama (local models)
+- Google Gemini
+- Azure AI Inference
+- GitHub Models API
 
-- Python 3.8 or higher
-- A GitHub account (for Azure/GitHub Models access)
-- Google Cloud credentials (for Calendar features)
-- Discord bot token (for Discord interface)
+**Integrated Skills**
+- Google Calendar management
+- Gmail operations
+- GitHub repository interaction
+- Web search (LangSearch)
+- PowerShell command execution
+- Vector memory storage (Pinecone)
+- Blackboard for persistent notes
+- Resume/document parsing
+
+**MCP Integration**
+- Model Context Protocol client for extensible tool system
+- Dynamic tool discovery and execution
+- Support for custom MCP servers
 
 ## Installation
 
-### 1. Clone and Navigate to Project
+1. Clone the repository and navigate to the project directory
 
-```bash
-cd c:\Users\user\Desktop\vscode\260228
-```
+2. Create a virtual environment:
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
 
-### 2. Create Virtual Environment
+3. Install dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
-```bash
-python -m venv .venv
-```
-
-### 3. Activate Virtual Environment
-
-**Windows (PowerShell):**
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-**Windows (CMD):**
-```cmd
-.venv\Scripts\activate.bat
-```
-
-**Linux/Mac:**
-```bash
-source .venv/bin/activate
-```
-
-### 4. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
+4. Configure environment variables:
+   - Copy `.env.example` to `.env`
+   - Fill in required credentials (see Configuration section)
 
 ## Configuration
 
-### Environment Variables
+### Required Environment Variables
 
-Create a `.env` file in the project root (use `.env.example` as template):
-
-```bash
-cp .env.example .env
+**Model Provider** (choose one):
+```
+MODEL_PROVIDER=ollama          # Options: ollama, gemini, azure, github
+OLLAMA_MODEL=gpt-oss:120b      # For Ollama
+OLLAMA_ENDPOINT=https://ollama.com
+GEMINI_API_KEY=your_key        # For Gemini
+GITHUB_TOKEN=your_token        # For GitHub Models or GitHub skill
 ```
 
-#### Required Variables (depending on your use case):
-
-| Variable | Description | Required For |
-|----------|-------------|--------------|
-| `MODEL_PROVIDER` | LLM provider to use (`azure`, `github`, `gemini`, `ollama`) | All modes |
-| `GITHUB_TOKEN` | GitHub personal access token | Azure/GitHub Models |
-| `GEMINI_API_KEY` | Google Gemini API key | Gemini provider |
-| `DISCORD_BOT_TOKEN` | Discord bot token | Discord bot mode |
-
-#### Optional Variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AZURE_MODEL` | Azure AI model name | `gpt-4o-mini` |
-| `AZURE_ENDPOINT` | Azure inference endpoint | `https://models.inference.ai.azure.com` |
-| `OLLAMA_MODEL` | Ollama model name | - |
-| `OLLAMA_ENDPOINT` | Ollama API endpoint | `http://localhost:11434` |
-| `OLLAMA_NUM_CTX` | Ollama context window size | `8192` |
-| `DISCORD_USER_ID` | Specific Discord user ID to respond to | - |
-| `DISCORD_ACTIVATION_WORD` | Word to activate bot responses | - |
-| `ACTIVATION_WORD` | Word to activate bot responses (for Discord and Speech) | - |
-| `ENABLE_SPEECH_ON_START` | Set initial runtime speech input state on startup (`true`/`false`) | `false` |
-
-> **Tip:** You can also modify the `.env` file programmatically using the
-> `edit_env` tool exposed by the system skill. It will only update keys that
-> already exist in the file (to avoid typos); add new variables manually if
-> needed.  The dictionary above documents several common entries but isn’t a
-> validation list.
-
-#### Google API Variables:
-
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to Google service account JSON (e.g., `env/google.json`) |
-| `GOOGLE_TOKEN_FILE` | Path to OAuth token file used by calendar, gmail, etc. (e.g., `env/token.json`) |
-| `GOOGLE_CALENDAR_ID` | Your Google Calendar ID (usually email) |
-| `GOOGLE_CALENDAR_TIMEZONE` | Calendar timezone (e.g., `America/New_York`) |
-| `DEFAULT_TIMEZONE` | Default timezone for events (e.g., `America/New_York`) |
-
-### Google Calendar Setup
-
-1. **Create Google Cloud Project:**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project
-   - Enable Google Calendar API
-
-2. **Create Service Account:**
-   - Navigate to "IAM & Admin" > "Service Accounts"
-   - Create service account
-   - Download JSON key file
-   - Save as `env/google.json`
-
-3. **OAuth Token:**
-   - Run the calendar skill to generate OAuth token
-   - Token will be saved to `env/token.json`
-
-4. **Share Calendar:**
-   - Open Google Calendar
-   - Share your calendar with the service account email
-
-## Usage
-
-### Terminal CLI Mode (Recommended for Testing)
-
-Run the main entry point which handles both the built-in CLI and the
-Discord bot.  The bot will start automatically when `DISCORD_BOT_TOKEN` is
-set (or you can force it with `--bot`).
-
-Speech listening runs automatically alongside CLI/bot. Transcriptions are only
-sent when runtime speech input is enabled. The startup default is controlled by
-`ENABLE_SPEECH_ON_START`, and can be toggled at runtime with `set_speech_mode`.
-
-
-
-```bash
-python main.py              # CLI + bot if token present
-python main.py --bot        # CLI + bot (regardless of token)
+**Google Services** (for Calendar/Gmail skills):
+```
+GOOGLE_APPLICATION_CREDENTIALS=env/google.json
+GOOGLE_TOKEN_FILE=env/token.json
+GOOGLE_DEFAULT_EMAIL=your_email@gmail.com
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_CALENDAR_TIMEZONE=Asia/Hong_Kong
 ```
 
-CLI-only mode is no longer a thing; there’s no need for a separate
-script.
-
-**Commands:**
-- Type your prompts at the `>` prompt
-- `/reset` - Clear conversation history
-- `/exit`, `/quit`, `exit`, or `quit` - Quit the agent locally.  Additionally, if the model itself returns
-  `{"action":"stop"}` the bridge will automatically shut down the entire
-  application regardless of interface, so you don’t need special handling in
-  other front ends.
-
-**Example session:**
+**Discord Bot** (optional):
 ```
-> What events do I have today?
-> Schedule a meeting tomorrow at 2pm
-> /reset
-> exit
+DISCORD_BOT_TOKEN=your_discord_token
+DISCORD_USER_ID=123456789      # Optional: restrict to specific user
+ACTIVATION_WORD=hey            # Word to activate the bot
+ACTIVATION_TIMEOUT=60          # Auto-deactivate after N seconds
 ```
 
-### Discord Bot Mode
-
-Run the Discord bot:
-
-```bash
-python discord_cli.py
+**Vector Memory** (optional):
+```
+PINECONE_API_KEY=your_key
+PINECONE_INDEX_NAME=agent-memory
+PINECONE_NAMESPACE=agent
+PINECONE_DIMENSION=1536
 ```
 
-**Features:**
-- Responds to mentions or activation word
-- Can be limited to specific user with `DISCORD_USER_ID`
-- Maintains conversation context per channel
-### Utilities
+### File Locations
 
-- `edit_env(field, content)` – change a key that already exists in `.env`
-- `list_env()` – list variable names defined in `.env` (values omitted)
+Place authentication files in the `env/` directory:
+- `google.json` - Google service account credentials
+- `token.json` - OAuth token for Calendar/Gmail
+- `vectors.json` - Local vector storage (auto-created)
+- `runtime_state.json` - Runtime configuration (auto-created)
+
+## Running the Application
+
+**From workspace root:**
+```powershell
+python system\main.py            # CLI + Discord bot (if token set)
+python system\main.py --no-cli   # Discord bot only
+python system\main.py --bot      # Force Discord bot mode
+```
+
+**Using batch file** (Windows):
+```powershell
+system\run.bat                   # Runs in background using pythonw.exe
+```
+
+**Activation:**
+- Discord: Send a message containing your activation word (default: "hey")
+- CLI: Type directly at the prompt
+- Speech: Enable with `ENABLE_SPEECH_ON_START=true`
+
 ## Project Structure
 
 ```
-260228/
-├── main.py               # Entry point for CLI and Discord bot
-├── discord_bridge.py     # Shared bridge class and helpers
-├── cli.py                # Terminal CLI interface and prompt handling
-├── speech.py             # Speech-to-text helper using Whisper
-├── discord_bot.py        # Discord-specific event handlers
-├── config.py             # Configuration helpers
-├── log.py                # Logging helpers
-├── system/               # Core agent & model code
-├── prompts/              # System prompts
-├── requirements.txt      # Python dependencies
-├── .env                  # Environment variables (create from .env.example)
-├── .env.example          # Example environment configuration
-├── env/                  # Credentials directory
-│   ├── google.json       # Google service account credentials
-│   └── token.json        # OAuth token (auto-generated)
-└── skills/               # MCP server skills
-    ├── calender.py       # Google Calendar operations
-    ├── misc.py           # Utility functions (time, env editing)
-    └── combined.py       # Combined MCP server (main server)
+system/              Main application modules
+  main.py            Entry point and interface orchestration
+  agent.py           Core agent logic with MCP integration
+  bridge.py          Shared interface abstraction layer
+  cli.py             Terminal CLI interface
+  discord_bot.py     Discord bot interface
+  speech.py          Speech-to-text interface
+  model.py           LLM client implementations
+  log.py             Logging utilities
+
+skills/              Agent capabilities and integrations
+  calender.py        Google Calendar operations
+  gmail.py           Gmail operations
+  github.py          GitHub API integration
+  search.py          Web search functionality
+  memory.py          Vector memory storage
+  blackboard.py      Persistent note system
+  powershell.py      PowerShell command execution
+  mcp_server.py      MCP server management
+  runtime_state.py   Runtime configuration
+
+prompts/             System prompts and instructions
+  system.py          Base system prompt configuration
+
+env/                 Credentials and runtime data
+  google.json        Google service account (gitignored)
+  token.json         OAuth tokens (gitignored)
+  vectors.json       Vector embeddings (gitignored)
+  runtime_state.json Runtime state (gitignored)
 ```
 
-## Available Skills
+## Usage Examples
 
-The agent has access to the following tools through MCP:
+**Discord Bot:**
+1. Invite bot to your server
+2. Send: "hey, what's on my calendar today?"
+3. Bot activates and responds
+4. Session auto-deactivates after timeout
 
-### Calendar Skills
-- `list_events` - View calendar events
-- `create_event` - Create new calendar events
-- `update_event` - Modify existing events
-- `delete_event` - Remove events
-- `get_event` - Get details of specific event
-- `add_oauth_token` - Initialize OAuth authentication
+**Terminal CLI:**
+```
+> analyze my recent GitHub commits
+> send an email to john@example.com about the meeting
+> search for information about MCP protocol
+> stop
+```
 
-### Utility Skills
-- `get_time` - Get current time in specified timezone
-- `edit_env` - Modify environment variables
+**Speech Input:**
+Enable with environment variable and speak naturally after the voice activity detection triggers.
 
-## Troubleshooting
+## Notes
 
-### Virtual Environment Issues
-- Make sure you activated the virtual environment before installing packages
-- On Windows, you may need to run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` if PowerShell blocks script execution
+- The agent maintains conversation context across multiple turns
+- MCP servers are initialized on startup and provide dynamic tools
+- Sessions can be reset with the "leave" command
+- Use "stop" to terminate the application gracefully
+- Log output is written to `agent_output.log` in the workspace root
 
-### API Errors
-- Verify all required environment variables are set
-- Check that your API keys are valid and have proper permissions
-- For GitHub Models, ensure your token has necessary scopes
+## Dependencies
 
-### Calendar Access
-- Verify `google.json` exists in `env/` folder
-- Ensure calendar is shared with service account email
-- Run `add_oauth_token` tool if `token.json` is missing
+Core requirements: Python 3.10+, azure-ai-inference, discord.py, google-genai, mcp, ollama
 
-### Discord Bot
-- Ensure bot has proper permissions in your Discord server
-- Check that `DISCORD_BOT_TOKEN` is correctly set
-- Verify bot has "Message Content Intent" enabled in Discord Developer Portal
-
-## Getting API Keys
-
-### GitHub Token (for Azure/GitHub Models)
-1. Go to GitHub Settings > Developer settings > Personal access tokens
-2. Generate new token (classic)
-3. No special scopes needed for API access
-4. Copy and set as `GITHUB_TOKEN`
-
-### Gemini API Key
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create or select a project
-3. Generate API key
-4. Copy and set as `GEMINI_API_KEY`
-
-### Discord Bot Token
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create new application
-3. Go to "Bot" section
-4. Create bot and copy token
-5. Enable "Message Content Intent" under Privileged Gateway Intents
-6. Copy and set as `DISCORD_BOT_TOKEN`
-
-## Development
-
-### Adding New Skills
-
-1. Create skill function in `skills/` directory
-2. Import and register in `skills/combined.py`
-3. Skills automatically become available to the agent
-
-### Modifying Prompts
-
-Edit `prompts.py` to customize:
-- `SYSTEM_PROMPT` - Core agent behavior
-- `DISCORD_LEAVE_INSTRUCTION` - Discord-specific instructions
-
-## License
-
-This project is for educational and personal use.
-
-## Support
-
-For issues or questions, please check:
-1. Environment variables are correctly set
-2. Virtual environment is activated
-3. All dependencies are installed
-4. API keys are valid
-
----
-
-**Quick Start Checklist:**
-- [ ] Virtual environment created and activated
-- [ ] Dependencies installed (`pip install -r requirements.txt`)
-- [ ] `.env` file created with required variables
-- [ ] Google credentials configured (if using calendar)
-- [ ] API keys obtained and configured
-- [ ] Tested running CLI alone and with the bot (`--bot` or token)
+See `requirements.txt` for full dependency list.

@@ -12,13 +12,13 @@ import asyncio
 from pathlib import Path
 from typing import Any, Callable, Awaitable
 
-# make sure the repository root is on sys.path so "system" package is importable
-parent = str(Path(__file__).resolve().parent)
+# make sure the repository root is on sys.path so "prompts" and "skills" packages are importable
+parent = str(Path(__file__).resolve().parent.parent)
 if parent not in sys.path:
     sys.path.insert(0, parent)
 
 from prompts.system import SYSTEM_PROMPT, DISCORD_LEAVE_INSTRUCTION, SPEECH_INPUT_PROMPT
-from system.agent import Agent, AgentManager
+from agent import Agent, AgentManager
 
 
 class AgentBridge:
